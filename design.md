@@ -31,14 +31,38 @@ Experimental UI for chatting with LLMs. Represents the conversation as a graph o
 - `rootId`: starting point
 - `currentPath`: array of node IDs from root to current position
 
+### State Management
+
+**Zustand Store:**
+- Chosen for lightweight, TypeScript-friendly state management
+- Perfect for tree operations and prototype scope
+- Single store containing:
+  - `tree`: ConversationTree instance
+  - `currentPath`: array of node IDs from root to current position
+  - `selectedNodeId`: currently selected node for preview
+  - `uiState`: tree visualization state (pan/zoom position)
+- Actions for tree operations: addNode, deleteNode, setCurrentPath, etc.
+- No providers needed, minimal re-renders
+
 ### User interface
 Three primary components:
 - Top navigation bar - help button
 - Chat - shows current conversation branch in full, similar to a chat interface
 - Tree - shows full conversation tree, with current branch highlighted
   - Custom tree component with vertical layout (root at top)
-  - Pan/zoom functionality using react-zoom-pan-pinch
+  - Pan/zoom functionality using react-flow
   - Branches extend downward, children at same height
+
+Tree:
+- each node represents user-assistant exchange (two halves: user top, assistant bottom)
+- assistant half shows loading state until response received
+- branching only allowed after complete exchanges (assistant responses)
+- selected node determines conversation context - chat displays root → selected node  
+- active branch highlighting shows same path as chat (root → selected node)
+- inactive branches at /50 opacity, hover to /100 opacity
+- nodes show truncated content preview or summary for both halves
+- + badge below selected node (visual indicator that new messages branch from here)
+
 
 ### Interaction Design
 - **Node preview**: Hover or click to preview node content
@@ -47,7 +71,7 @@ Three primary components:
 - **Future enhancements**: Merge branches, node compacting
 
 ### Tech Stack
-- frontend: react (typescript), tailwind, shadcn
+- frontend: react (typescript), tailwind, shadcn, zustand, react flow
 - build tools: vite
 - package manager: npm
 - runtime: node.js 20.x LTS
