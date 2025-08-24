@@ -5,6 +5,29 @@ import { Node, Edge } from '@xyflow/react';
 import { ExchangeTree, ExchangeNode } from '../types/conversation';
 import { conversationUtils } from '../store/conversationStore';
 
+/**
+ * Helper function to get CSS variable value from the document root
+ */
+export function getCSSVariable(variable: string): string {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(variable)
+    .trim();
+}
+
+/**
+ * Get resolved CSS custom property values for styling React Flow elements
+ */
+export function getThemeColors() {
+  return {
+    border: getCSSVariable('--border') || 'hsl(214.3 31.8% 91.4%)',
+    mutedForeground: getCSSVariable('--muted-foreground') || 'hsl(215.4 16.3% 46.9%)',
+    background: getCSSVariable('--background') || 'hsl(0 0% 100%)',
+    card: getCSSVariable('--card') || 'hsl(0 0% 100%)',
+    primary: getCSSVariable('--primary') || 'hsl(222.2 84% 4.9%)',
+    secondary: getCSSVariable('--secondary') || 'hsl(210 40% 96%)'
+  };
+}
+
 export interface FlowExchangeNode extends Node {
   data: {
     exchange: ExchangeNode;
@@ -28,6 +51,7 @@ export function transformExchangeTreeToFlow(
   exchangeTree: ExchangeTree
 ): TreeLayout {
   if (!exchangeTree.root_id) {
+    console.log('🔍 transformExchangeTreeToFlow: No root_id found');
     return { nodes: [], edges: [] };
   }
 
@@ -35,11 +59,23 @@ export function transformExchangeTreeToFlow(
   const edges: Edge[] = [];
   const positions = new Map<string, { x: number; y: number; level: number }>();
 
+  console.log('🔍 transformExchangeTreeToFlow: Starting with tree:', {
+    rootId: exchangeTree.root_id,
+    exchangeCount: Object.keys(exchangeTree.exchanges).length,
+    currentPath: exchangeTree.current_path
+  });
+
   // First pass: Calculate positions for all nodes
   calculateNodePositions(exchangeTree, exchangeTree.root_id, 0, 0, positions);
 
   // Second pass: Create nodes and edges
   createNodesAndEdges(exchangeTree, exchangeTree.root_id, 0, positions, nodes, edges);
+
+  console.log('🔍 transformExchangeTreeToFlow: Result:', {
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
+    edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, style: e.style }))
+  });
 
   return { nodes, edges };
 }
@@ -122,6 +158,8 @@ function createNodesAndEdges(
 
   // Create edges and process children
   children.forEach((child) => {
+    const colors = getThemeColors();
+    
     // Create edge from current node to child
     const edge: Edge = {
       id: `${nodeId}-${child.id}`,
@@ -130,11 +168,17 @@ function createNodesAndEdges(
       type: 'smoothstep',
       animated: false,
       style: {
-        stroke: isInCurrentPath ? 'hsl(var(--border))' : 'hsl(var(--muted-foreground))',
-        strokeWidth: isInCurrentPath ? 2 : 1,
-        opacity: isInCurrentPath ? 1 : 0.5
+        stroke: isInCurrentPath ? colors.mutedForeground : colors.border
       }
     };
+
+    console.log('🔍 createNodesAndEdges: Creating edge:', {
+      edge,
+      parentId: nodeId,
+      childId: child.id,
+      isInCurrentPath,
+      childrenCount: children.length
+    });
 
     edges.push(edge);
 
@@ -169,16 +213,32 @@ export function updateNodeStyles(
   });
 
   const updatedEdges = edges.map(edge => {
-    const sourceNode = nodes.find(n => n.id === edge.source);
-    const isInPath = sourceNode ? conversationUtils.isNodeInCurrentPath(exchangeTree, edge.source) : false;
+    // Check if this edge represents a connection in the current path
+    // An edge should be highlighted only if it connects consecutive nodes in the current path
+    const currentPath = exchangeTree.current_path;
+    const isEdgeInActivePath = currentPath.length > 0 && 
+      currentPath.some((nodeId, index) => {
+        // Check if this edge connects the current node to the next node in the path
+        if (index < currentPath.length - 1) {
+          const nextNodeId = currentPath[index + 1];
+          return edge.source === nodeId && edge.target === nextNodeId;
+        }
+        // Also check if this edge connects root to first path node
+        if (index === 0 && exchangeTree.root_id) {
+          return edge.source === exchangeTree.root_id && edge.target === nodeId;
+        }
+        return false;
+      });
+    
+    const colors = getThemeColors();
 
     return {
       ...edge,
       style: {
         ...edge.style,
-        stroke: isInPath ? 'hsl(var(--border))' : 'hsl(var(--muted-foreground))',
-        strokeWidth: isInPath ? 2 : 1,
-        opacity: isInPath ? 1 : 0.5
+        stroke: isEdgeInActivePath ? colors.mutedForeground : colors.border,
+        strokeWidth: isEdgeInActivePath ? 2 : 1,
+        opacity: isEdgeInActivePath ? 1 : 0.5
       }
     };
   });

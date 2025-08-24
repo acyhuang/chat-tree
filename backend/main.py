@@ -9,11 +9,14 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import (
+    ExchangeTree, ExchangeNode, CreateExchangeRequest,
+    CreateConversationRequest, ExchangeTreeResponse, ExchangeResponse, 
+    PathResponse, ChatRequest, ChatResponse,
+    # Legacy models for backward compatibility
     ConversationTree, ConversationNode, CreateNodeRequest, 
-    CreateConversationRequest, ConversationResponse, NodeResponse, 
-    PathResponse, ChatRequest, ChatResponse
+    ConversationResponse, NodeResponse
 )
-from storage import storage
+from storage import storage, legacy_storage
 from openai_service import openai_service
 
 # Configure logging
@@ -49,32 +52,32 @@ async def health_check():
         "storage_stats": stats
     }
 
-# Conversation Management Endpoints
+# Exchange-based Conversation Management Endpoints
 
-@app.post("/api/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/api/conversations", response_model=ExchangeTreeResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(request: CreateConversationRequest):
     """
-    Create a new conversation tree.
+    Create a new exchange-based conversation tree.
     
-    Optionally creates an initial message node if provided.
+    Optionally creates an initial exchange if initial message is provided.
     """
     try:
-        # Create new conversation
-        conversation = ConversationTree()
+        # Create new exchange tree
+        conversation = ExchangeTree()
         
-        # Add initial message if provided
+        # Add initial exchange if provided
         if request.initial_message:
-            initial_node = ConversationNode(
-                content=request.initial_message,
-                role="user"
+            initial_exchange = ExchangeNode(
+                user_content=request.initial_message,
+                user_summary=""  # Will be auto-generated
             )
-            conversation.add_node(initial_node)
+            conversation.add_exchange(initial_exchange)
         
         # Store the conversation
         stored_conversation = storage.create_conversation(conversation)
         
-        logger.info(f"Created new conversation {stored_conversation.id}")
-        return ConversationResponse(conversation=stored_conversation)
+        logger.info(f"Created new exchange tree {stored_conversation.id}")
+        return ExchangeTreeResponse(conversation=stored_conversation)
         
     except Exception as e:
         logger.error(f"Error creating conversation: {e}")
@@ -83,9 +86,9 @@ async def create_conversation(request: CreateConversationRequest):
             detail="Failed to create conversation"
         )
 
-@app.get("/api/conversations/{conversation_id}", response_model=ConversationResponse)
+@app.get("/api/conversations/{conversation_id}", response_model=ExchangeTreeResponse)
 async def get_conversation(conversation_id: str):
-    """Get a conversation tree by ID."""
+    """Get an exchange tree by ID."""
     conversation = storage.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(
@@ -93,7 +96,7 @@ async def get_conversation(conversation_id: str):
             detail=f"Conversation {conversation_id} not found"
         )
     
-    return ConversationResponse(conversation=conversation)
+    return ExchangeTreeResponse(conversation=conversation)
 
 @app.delete("/api/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(conversation_id: str):
@@ -105,12 +108,101 @@ async def delete_conversation(conversation_id: str):
             detail=f"Conversation {conversation_id} not found"
         )
 
-# Node Operations Endpoints
+# Exchange Operations Endpoints
 
-@app.post("/api/nodes", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/api/exchanges", response_model=ExchangeResponse, status_code=status.HTTP_201_CREATED)
+async def create_exchange(request: CreateExchangeRequest, conversation_id: str):
+    """
+    Create a new exchange in a conversation.
+    
+    Args:
+        request: Exchange creation details
+        conversation_id: The conversation to add the exchange to
+    """
+    try:
+        # Create the new exchange
+        new_exchange = ExchangeNode(
+            user_content=request.user_content,
+            user_summary=request.user_summary or ""  # Auto-generated if empty
+        )
+        
+        # Add to conversation
+        updated_conversation = storage.add_exchange_to_conversation(
+            conversation_id, new_exchange, request.parent_id
+        )
+        
+        if not updated_conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+        
+        logger.info(f"Created exchange {new_exchange.id} in conversation {conversation_id}")
+        return ExchangeResponse(exchange=new_exchange)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating exchange: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create exchange"
+        )
+
+@app.get("/api/exchanges/{exchange_id}", response_model=ExchangeResponse)
+async def get_exchange(exchange_id: str, conversation_id: str):
+    """Get a single exchange by ID."""
+    exchange = storage.get_exchange(conversation_id, exchange_id)
+    if not exchange:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exchange {exchange_id} not found in conversation {conversation_id}"
+        )
+    
+    return ExchangeResponse(exchange=exchange)
+
+@app.delete("/api/exchanges/{exchange_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_exchange(exchange_id: str, conversation_id: str):
+    """Delete an exchange and all its children."""
+    updated_conversation = storage.delete_exchange_from_conversation(conversation_id, exchange_id)
+    if not updated_conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exchange {exchange_id} not found in conversation {conversation_id}"
+        )
+
+@app.get("/api/exchange-paths/{exchange_id}", response_model=PathResponse)
+async def get_path_to_exchange(exchange_id: str, conversation_id: str):
+    """Get the path from root to the specified exchange."""
+    conversation = storage.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation {conversation_id} not found"
+        )
+    
+    path = conversation.get_path_to_exchange(exchange_id)
+    if not path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exchange {exchange_id} not found in conversation {conversation_id}"
+        )
+    
+    # Get the actual exchanges in the path
+    path_exchanges = []
+    for path_exchange_id in path:
+        exchange = conversation.exchanges.get(path_exchange_id)
+        if exchange:
+            path_exchanges.append(exchange)
+    
+    return PathResponse(path=path, exchanges=path_exchanges)
+
+# Legacy Node Operations Endpoints
+
+@app.post("/api/legacy/nodes", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)
 async def create_node(request: CreateNodeRequest, conversation_id: str):
     """
-    Create a new node in a conversation.
+    DEPRECATED: Create a new node in a conversation.
     
     Args:
         request: Node creation details
@@ -124,8 +216,8 @@ async def create_node(request: CreateNodeRequest, conversation_id: str):
             summary=request.summary
         )
         
-        # Add to conversation
-        updated_conversation = storage.add_node_to_conversation(
+        # Add to conversation using legacy storage
+        updated_conversation = legacy_storage.add_node_to_conversation(
             conversation_id, new_node, request.parent_id
         )
         
@@ -200,17 +292,17 @@ async def get_path_to_node(node_id: str, conversation_id: str):
 @app.post("/api/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def send_chat_message(request: ChatRequest):
     """
-    Send a message to the LLM and get a response.
+    Send a message to the LLM and get a response using exchange-based structure.
     
-    Creates a user node with the message, sends conversation history to OpenAI,
-    and creates an assistant node with the response.
+    Creates an exchange with user message, sends conversation history to OpenAI,
+    and completes the exchange with the assistant response.
     """
     try:
-        logger.info(f"Chat request for conversation {request.conversation_id}")
+        logger.info(f"Chat request for exchange tree {request.conversation_id}")
         
         # Debug: List all available conversations
         available_conversations = storage.list_conversations()
-        logger.info(f"Available conversations: {available_conversations}")
+        logger.info(f"Available exchange trees: {available_conversations}")
         
         # Get the conversation
         conversation = storage.get_conversation(request.conversation_id)
@@ -220,11 +312,11 @@ async def send_chat_message(request: ChatRequest):
             # Auto-recovery: Try to create a new conversation with the same ID
             logger.info(f"Attempting to auto-create missing conversation {request.conversation_id}")
             try:
-                new_conversation = ConversationTree()
+                new_conversation = ExchangeTree()
                 # Force the ID to match what the frontend expects
                 new_conversation.id = request.conversation_id
                 conversation = storage.create_conversation(new_conversation)
-                logger.info(f"Auto-created conversation {conversation.id}")
+                logger.info(f"Auto-created exchange tree {conversation.id}")
             except Exception as e:
                 logger.error(f"Failed to auto-create conversation: {e}")
                 raise HTTPException(
@@ -232,38 +324,46 @@ async def send_chat_message(request: ChatRequest):
                     detail=f"Conversation {request.conversation_id} not found and could not be recreated"
                 )
         
-        # Determine parent node ID
+        # Determine parent exchange ID
         parent_id = request.parent_id
         if parent_id is None and conversation.current_path:
-            # Default to last node in current path
+            # Default to last exchange in current path
             parent_id = conversation.current_path[-1]
         
-        # Create user message node
-        user_node = ConversationNode(
-            content=request.message,
-            role="user"
+        # Create new exchange with user message
+        exchange = ExchangeNode(
+            user_content=request.message,
+            user_summary="",  # Auto-generated
+            assistant_loading=True  # Mark as loading
         )
         
-        # Add user node to conversation
-        updated_conversation = storage.add_node_to_conversation(
-            request.conversation_id, user_node, parent_id
+        # Add exchange to conversation
+        updated_conversation = storage.add_exchange_to_conversation(
+            request.conversation_id, exchange, parent_id
         )
         
         if not updated_conversation:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to add user message to conversation"
+                detail="Failed to add exchange to conversation"
             )
         
-        # Update current path to include the new user node
-        updated_conversation.current_path = updated_conversation.get_path_to_node(user_node.id)
+        # Update current path to include the new exchange
+        updated_conversation.current_path = updated_conversation.get_path_to_exchange(exchange.id)
         
-        # Get conversation history for OpenAI
+        # Get conversation history for OpenAI (convert exchanges to individual messages)
         conversation_history = []
-        for node_id in updated_conversation.current_path:
-            node = updated_conversation.nodes.get(node_id)
-            if node:
-                conversation_history.append(node)
+        for exchange_id in updated_conversation.current_path:
+            ex = updated_conversation.exchanges.get(exchange_id)
+            if ex:
+                # Add user message
+                user_msg = ConversationNode(content=ex.user_content, role="user", summary=ex.user_summary)
+                conversation_history.append(user_msg)
+                
+                # Add assistant message if available
+                if ex.assistant_content and ex.is_complete:
+                    assistant_msg = ConversationNode(content=ex.assistant_content, role="assistant", summary=ex.assistant_summary or "")
+                    conversation_history.append(assistant_msg)
         
         logger.info(f"Sending {len(conversation_history)} messages to OpenAI for conversation {request.conversation_id}")
         
@@ -273,34 +373,31 @@ async def send_chat_message(request: ChatRequest):
             request.system_prompt
         )
         
-        # Create assistant response node  
-        assistant_node = ConversationNode(
-            content=assistant_response,
-            role="assistant"
-        )
+        # Complete the exchange with assistant response
+        exchange.assistant_content = assistant_response
+        exchange.assistant_loading = False
+        exchange.is_complete = True
+        # assistant_summary will be auto-generated by the model
         
-        # Add assistant node to conversation
-        final_conversation = storage.add_node_to_conversation(
-            request.conversation_id, assistant_node, user_node.id
-        )
+        # Update the exchange in storage
+        final_conversation = storage.update_exchange(request.conversation_id, exchange)
         
         if not final_conversation:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to add assistant response to conversation"
+                detail="Failed to update exchange with assistant response"
             )
         
-        # Update current path to include the new assistant node
-        final_conversation.current_path = final_conversation.get_path_to_node(assistant_node.id)
+        # Update current path to include the completed exchange
+        final_conversation.current_path = final_conversation.get_path_to_exchange(exchange.id)
         
         # Update stored conversation with new current path
         storage.update_conversation(final_conversation)
         
-        logger.info(f"Chat completed - created user node {user_node.id} and assistant node {assistant_node.id}")
+        logger.info(f"Chat completed - created exchange {exchange.id} with user message and assistant response")
         
         return ChatResponse(
-            user_node=user_node,
-            assistant_node=assistant_node,
+            exchange=exchange,
             updated_conversation=final_conversation
         )
         

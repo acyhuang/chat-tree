@@ -46,12 +46,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
   return (
     <div className={`p-2 ${className}`}>
-      {error && (
-        <div className="mb-3 p-3 bg-destructive/10 border border-destructive rounded-md">
-          <p className="text-destructive-foreground text-sm">{error}</p>
-        </div>
-      )}
-      
       <div>
         <div className="flex space-x-3 max-w-3xl mx-auto">
           <Textarea

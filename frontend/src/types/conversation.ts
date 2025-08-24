@@ -7,17 +7,7 @@
 
 export type MessageRole = "user" | "assistant";
 
-export interface ConversationNode {
-  id: string;
-  content: string;
-  summary: string; // Auto-generated from content if not provided
-  role: MessageRole;
-  parent_id: string | null;
-  children_ids: string[];
-  metadata: Record<string, any>;
-}
-
-// New exchange-based node for tree display
+// Primary data structures (exchange-based)
 export interface ExchangeNode {
   id: string;
   user_content: string;
@@ -31,15 +21,6 @@ export interface ExchangeNode {
   metadata: Record<string, any>;
 }
 
-export interface ConversationTree {
-  id: string;
-  nodes: Record<string, ConversationNode>;
-  root_id: string | null;
-  current_path: string[];
-  metadata: Record<string, any>;
-}
-
-// New exchange-based conversation tree for tree display
 export interface ExchangeTree {
   id: string;
   exchanges: Record<string, ExchangeNode>;
@@ -48,12 +29,30 @@ export interface ExchangeTree {
   metadata: Record<string, any>;
 }
 
-// API Request types
-export interface CreateNodeRequest {
+// Legacy data structures (kept for backward compatibility)
+export interface ConversationNode {
+  id: string;
   content: string;
+  summary: string; // Auto-generated from content if not provided
   role: MessageRole;
+  parent_id: string | null;
+  children_ids: string[];
+  metadata: Record<string, any>;
+}
+
+export interface ConversationTree {
+  id: string;
+  nodes: Record<string, ConversationNode>;
+  root_id: string | null;
+  current_path: string[];
+  metadata: Record<string, any>;
+}
+
+// API Request types
+export interface CreateExchangeRequest {
+  user_content: string;
   parent_id?: string | null;
-  summary?: string | null;
+  user_summary?: string | null;
 }
 
 export interface CreateConversationRequest {
@@ -61,17 +60,17 @@ export interface CreateConversationRequest {
 }
 
 // API Response types
-export interface ConversationResponse {
-  conversation: ConversationTree;
+export interface ExchangeTreeResponse {
+  conversation: ExchangeTree;
 }
 
-export interface NodeResponse {
-  node: ConversationNode;
+export interface ExchangeResponse {
+  exchange: ExchangeNode;
 }
 
 export interface PathResponse {
   path: string[];
-  nodes: ConversationNode[];
+  exchanges: ExchangeNode[];
 }
 
 export interface ChatRequest {
@@ -82,17 +81,31 @@ export interface ChatRequest {
 }
 
 export interface ChatResponse {
-  user_node: ConversationNode;
-  assistant_node: ConversationNode;
-  updated_conversation: ConversationTree;
+  exchange: ExchangeNode;
+  updated_conversation: ExchangeTree;
 }
 
 // Frontend-specific types
 export interface ConversationState {
-  currentConversation: ConversationTree | null;
-  currentExchangeTree: ExchangeTree | null; // Tree representation for UI
+  currentExchangeTree: ExchangeTree | null;
   isLoading: boolean;
   error: string | null;
+}
+
+// Legacy API types (kept for backward compatibility)
+export interface CreateNodeRequest {
+  content: string;
+  role: MessageRole;
+  parent_id?: string | null;
+  summary?: string | null;
+}
+
+export interface ConversationResponse {
+  conversation: ConversationTree;
+}
+
+export interface NodeResponse {
+  node: ConversationNode;
 }
 
 export interface ApiError {

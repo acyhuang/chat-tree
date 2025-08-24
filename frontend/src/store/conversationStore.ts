@@ -1,5 +1,5 @@
 /**
- * Zustand store for conversation state management.
+ * Zustand store for exchange-based conversation state management.
  * 
  * Manages conversation data, loading states, and provides actions
  * for interacting with the backend API.
@@ -8,139 +8,33 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { 
-  ConversationTree, 
-  ConversationNode, 
   ExchangeTree,
   ExchangeNode,
-  CreateNodeRequest, 
   CreateConversationRequest,
   ChatRequest,
   ChatResponse,
-  ApiError 
+  ApiError,
+  ConversationState
 } from '../types/conversation';
 import { apiClient } from '../api/client';
 
-interface ConversationState {
-  // State
-  currentConversation: ConversationTree | null;
-  currentExchangeTree: ExchangeTree | null;
-  isLoading: boolean;
-  error: string | null;
-  
+interface ExchangeConversationState extends ConversationState {
   // Actions
   createConversation: (request: CreateConversationRequest) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
-  addNode: (request: CreateNodeRequest) => Promise<ConversationNode | null>;
-  deleteNode: (nodeId: string) => Promise<void>;
-  setCurrentPath: (nodeId: string) => Promise<void>;
+  setCurrentPath: (exchangeId: string) => Promise<void>;
   sendMessage: (message: string, systemPrompt?: string) => Promise<ChatResponse>;
   clearError: () => void;
   reset: () => void;
 }
 
-// Utility functions to convert between message-based and exchange-based structures
-const conversationToExchangeTree = (conversation: ConversationTree): ExchangeTree => {
-  if (!conversation.root_id) {
-    return {
-      id: conversation.id,
-      exchanges: {},
-      root_id: null,
-      current_path: [],
-      metadata: conversation.metadata
-    };
-  }
-
-  const exchanges: Record<string, ExchangeNode> = {};
-  const processedNodes = new Set<string>();
-  const exchangeIdMap = new Map<string, string>(); // node ID -> exchange ID
-  
-  // Process nodes in pairs starting from root
-  const processNodePair = (userNodeId: string, parentExchangeId: string | null): string => {
-    const userNode = conversation.nodes[userNodeId];
-    if (!userNode || userNode.role !== 'user') {
-      throw new Error(`Expected user node, got ${userNode?.role || 'undefined'}`);
-    }
-
-    // Find assistant response
-    const assistantNodeId = userNode.children_ids.find(childId => 
-      conversation.nodes[childId]?.role === 'assistant'
-    );
-    
-    const assistantNode = assistantNodeId ? conversation.nodes[assistantNodeId] : null;
-    
-    // Create exchange ID (use user node ID as base)
-    const exchangeId = `exchange_${userNode.id}`;
-    exchangeIdMap.set(userNodeId, exchangeId);
-    if (assistantNode) {
-      exchangeIdMap.set(assistantNode.id, exchangeId);
-    }
-
-    // Create exchange node
-    const exchange: ExchangeNode = {
-      id: exchangeId,
-      user_content: userNode.content,
-      user_summary: userNode.summary,
-      assistant_content: assistantNode?.content || null,
-      assistant_summary: assistantNode?.summary || null,
-      assistant_loading: !assistantNode,
-      is_complete: !!assistantNode,
-      parent_id: parentExchangeId,
-      children_ids: [], // Will be populated when processing children
-      metadata: {
-        ...userNode.metadata,
-        user_node_id: userNode.id,
-        assistant_node_id: assistantNode?.id || null
-      }
-    };
-
-    exchanges[exchangeId] = exchange;
-    processedNodes.add(userNodeId);
-    if (assistantNode) {
-      processedNodes.add(assistantNode.id);
-    }
-
-    // Process children (next user messages)
-    const nextUserNodes = (assistantNode?.children_ids || [])
-      .map(childId => conversation.nodes[childId])
-      .filter(node => node && node.role === 'user');
-
-    exchange.children_ids = nextUserNodes.map(userNode => {
-      const childExchangeId = processNodePair(userNode.id, exchangeId);
-      return childExchangeId;
-    });
-
-    return exchangeId;
-  };
-
-  // Start processing from root
-  const rootExchangeId = processNodePair(conversation.root_id, null);
-
-  // Convert current path to exchange path
-  const exchangePath: string[] = [];
-  for (const nodeId of conversation.current_path) {
-    const exchangeId = exchangeIdMap.get(nodeId);
-    if (exchangeId && !exchangePath.includes(exchangeId)) {
-      exchangePath.push(exchangeId);
-    }
-  }
-
-  return {
-    id: conversation.id,
-    exchanges,
-    root_id: rootExchangeId,
-    current_path: exchangePath,
-    metadata: conversation.metadata
-  };
-};
-
 const initialState = {
-  currentConversation: null,
   currentExchangeTree: null,
   isLoading: false,
   error: null,
 };
 
-export const useConversationStore = create<ConversationState>()(
+export const useConversationStore = create<ExchangeConversationState>()(
   devtools(
     (set, get) => ({
       ...initialState,
@@ -150,10 +44,8 @@ export const useConversationStore = create<ConversationState>()(
         
         try {
           const conversation = await apiClient.createConversation(request);
-          const exchangeTree = conversationToExchangeTree(conversation);
           set({ 
-            currentConversation: conversation, 
-            currentExchangeTree: exchangeTree,
+            currentExchangeTree: conversation,
             isLoading: false 
           });
         } catch (error) {
@@ -171,10 +63,8 @@ export const useConversationStore = create<ConversationState>()(
         
         try {
           const conversation = await apiClient.getConversation(conversationId);
-          const exchangeTree = conversationToExchangeTree(conversation);
           set({ 
-            currentConversation: conversation, 
-            currentExchangeTree: exchangeTree,
+            currentExchangeTree: conversation,
             isLoading: false 
           });
         } catch (error) {
@@ -187,90 +77,32 @@ export const useConversationStore = create<ConversationState>()(
         }
       },
 
-      addNode: async (request: CreateNodeRequest): Promise<ConversationNode | null> => {
-        const { currentConversation } = get();
-        if (!currentConversation) {
+      setCurrentPath: async (exchangeId: string) => {
+        const { currentExchangeTree } = get();
+        if (!currentExchangeTree) {
           throw new Error('No conversation loaded');
         }
 
-        set({ isLoading: true, error: null });
-        
         try {
-          const newNode = await apiClient.createNode(currentConversation.id, request);
+          const path = await apiClient.getPathToExchange(currentExchangeTree.id, exchangeId);
           
-          // Refresh the conversation to get the updated tree
-          await get().loadConversation(currentConversation.id);
-          
-          return newNode;
-        } catch (error) {
-          const apiError = error as ApiError;
-          set({ 
-            error: apiError.detail || apiError.message, 
-            isLoading: false 
-          });
-          throw error;
-        }
-      },
-
-      deleteNode: async (nodeId: string) => {
-        const { currentConversation } = get();
-        if (!currentConversation) {
-          throw new Error('No conversation loaded');
-        }
-
-        set({ isLoading: true, error: null });
-        
-        try {
-          await apiClient.deleteNode(currentConversation.id, nodeId);
-          
-          // Refresh the conversation to get the updated tree
-          await get().loadConversation(currentConversation.id);
-        } catch (error) {
-          const apiError = error as ApiError;
-          set({ 
-            error: apiError.detail || apiError.message, 
-            isLoading: false 
-          });
-          throw error;
-        }
-      },
-
-      setCurrentPath: async (nodeId: string) => {
-        const { currentConversation } = get();
-        if (!currentConversation) {
-          throw new Error('No conversation loaded');
-        }
-
-        set({ isLoading: true, error: null });
-        
-        try {
-          const pathResponse = await apiClient.getPathToNode(currentConversation.id, nodeId);
-          
-          // Update the current path in the conversation
-          const updatedConversation = {
-            ...currentConversation,
-            current_path: pathResponse.path
+          // Update the current exchange tree with new path
+          const updatedTree = {
+            ...currentExchangeTree,
+            current_path: path.path
           };
           
-          const exchangeTree = conversationToExchangeTree(updatedConversation);
-          set({ 
-            currentConversation: updatedConversation, 
-            currentExchangeTree: exchangeTree,
-            isLoading: false 
-          });
+          set({ currentExchangeTree: updatedTree });
         } catch (error) {
           const apiError = error as ApiError;
-          set({ 
-            error: apiError.detail || apiError.message, 
-            isLoading: false 
-          });
+          set({ error: apiError.detail || apiError.message });
           throw error;
         }
       },
 
-      sendMessage: async (message: string, systemPrompt?: string): Promise<ChatResponse> => {
-        const { currentConversation } = get();
-        if (!currentConversation) {
+      sendMessage: async (message: string, systemPrompt?: string) => {
+        const { currentExchangeTree } = get();
+        if (!currentExchangeTree) {
           throw new Error('No conversation loaded');
         }
 
@@ -279,17 +111,17 @@ export const useConversationStore = create<ConversationState>()(
         try {
           const chatRequest: ChatRequest = {
             message,
-            conversation_id: currentConversation.id,
-            system_prompt: systemPrompt || null,
+            conversation_id: currentExchangeTree.id,
+            parent_id: currentExchangeTree.current_path.length > 0 
+              ? currentExchangeTree.current_path[currentExchangeTree.current_path.length - 1]
+              : null,
+            system_prompt: systemPrompt
           };
 
-          const response = await apiClient.sendChatMessage(chatRequest);
+          const response = await apiClient.sendMessage(chatRequest);
           
-          // Update the store with the updated conversation
-          const exchangeTree = conversationToExchangeTree(response.updated_conversation);
           set({ 
-            currentConversation: response.updated_conversation, 
-            currentExchangeTree: exchangeTree,
+            currentExchangeTree: response.updated_conversation,
             isLoading: false 
           });
           
@@ -310,56 +142,18 @@ export const useConversationStore = create<ConversationState>()(
 
       reset: () => {
         set(initialState);
-      },
+      }
     }),
     {
-      name: 'conversation-store', // Name for devtools
+      name: 'conversation-storage',
     }
   )
 );
 
-// Selector hooks for specific pieces of state
-export const useCurrentConversation = () => useConversationStore(state => state.currentConversation);
-export const useCurrentExchangeTree = () => useConversationStore(state => state.currentExchangeTree);
-export const useConversationLoading = () => useConversationStore(state => state.isLoading);
-export const useConversationError = () => useConversationStore(state => state.error);
-
-// Utility functions for working with conversation data
+// Utility functions for working with exchange trees
 export const conversationUtils = {
   /**
-   * Get nodes in the current conversation path (for ChatInterface).
-   */
-  getCurrentPathNodes: (conversation: ConversationTree | null): ConversationNode[] => {
-    if (!conversation) return [];
-    
-    return conversation.current_path
-      .map(nodeId => conversation.nodes[nodeId])
-      .filter(Boolean);
-  },
-
-  /**
-   * Get exchanges in the current path.
-   */
-  getCurrentPathExchanges: (exchangeTree: ExchangeTree | null): ExchangeNode[] => {
-    if (!exchangeTree) return [];
-    
-    return exchangeTree.current_path
-      .map(exchangeId => exchangeTree.exchanges[exchangeId])
-      .filter(Boolean);
-  },
-
-  /**
-   * Get all leaf exchanges (exchanges with no children).
-   */
-  getLeafNodes: (exchangeTree: ExchangeTree | null): ExchangeNode[] => {
-    if (!exchangeTree) return [];
-    
-    return Object.values(exchangeTree.exchanges)
-      .filter(exchange => exchange.children_ids.length === 0);
-  },
-
-  /**
-   * Get children of a specific exchange.
+   * Get children of an exchange.
    */
   getNodeChildren: (exchangeTree: ExchangeTree | null, exchangeId: string): ExchangeNode[] => {
     if (!exchangeTree || !exchangeTree.exchanges[exchangeId]) return [];
@@ -385,20 +179,69 @@ export const conversationUtils = {
     if (!exchangeTree || !exchangeTree.exchanges[exchangeId]) return 0;
     
     let depth = 0;
-    let currentId = exchangeId;
+    let currentId: string | null = exchangeId;
     
-    while (currentId && exchangeTree.exchanges[currentId]?.parent_id) {
-      depth++;
-      currentId = exchangeTree.exchanges[currentId].parent_id!;
+    while (currentId && exchangeTree.exchanges[currentId]) {
+      const exchange = exchangeTree.exchanges[currentId];
+      if (exchange.parent_id) {
+        depth++;
+        currentId = exchange.parent_id;
+      } else {
+        break;
+      }
     }
     
     return depth;
   },
 
   /**
-   * Check if branching is allowed from this exchange (must be complete).
+   * Get all leaf nodes in the tree.
+   */
+  getLeafNodes: (exchangeTree: ExchangeTree | null): ExchangeNode[] => {
+    if (!exchangeTree) return [];
+    
+    return Object.values(exchangeTree.exchanges).filter(
+      exchange => exchange.children_ids.length === 0
+    );
+  },
+
+  /**
+   * Check if an exchange can be branched from (is complete).
    */
   canBranchFromExchange: (exchange: ExchangeNode): boolean => {
-    return exchange.is_complete;
+    return exchange.is_complete && !exchange.assistant_loading;
+  },
+
+  /**
+   * Get the path from root to a specific exchange.
+   */
+  getPathToExchange: (exchangeTree: ExchangeTree | null, exchangeId: string): string[] => {
+    if (!exchangeTree || !exchangeTree.exchanges[exchangeId]) return [];
+    
+    const path: string[] = [];
+    let currentId: string | null = exchangeId;
+    
+    while (currentId && exchangeTree.exchanges[currentId]) {
+      path.unshift(currentId);
+      const exchange = exchangeTree.exchanges[currentId];
+      currentId = exchange.parent_id;
+    }
+    
+    return path;
   }
+};
+
+// Hook to get current exchange tree
+export const useCurrentExchangeTree = () => {
+  return useConversationStore(state => state.currentExchangeTree);
+};
+
+// Hook to check loading state
+export const useIsLoading = () => {
+  return useConversationStore(state => state.isLoading);
+};
+
+// Hook to get error state
+export const useError = () => {
+  return useConversationStore(state => state.error);
 };

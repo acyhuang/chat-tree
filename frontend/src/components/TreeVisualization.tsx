@@ -13,18 +13,14 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useReactFlow,
   ReactFlowProvider,
-  Node,
-  Edge
+  Node
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Target } from 'lucide-react';
-import { ExchangeNode, ExchangeTree } from '../types/conversation';
+import { ExchangeNode } from '../types/conversation';
 import { conversationUtils, useCurrentExchangeTree, useConversationStore } from '../store/conversationStore';
 import FlowExchangeNode from './FlowExchangeNode';
-import { Button } from './ui/button';
 import { transformExchangeTreeToFlow, updateNodeStyles, FlowExchangeNode as FlowExchangeNodeType } from '../utils/treeToFlow';
 
 export interface TreeVisualizationProps {
@@ -33,7 +29,7 @@ export interface TreeVisualizationProps {
 
 // Define custom node types for React Flow
 const nodeTypes = {
-  exchangeNode: FlowExchangeNode
+  exchangeNode: FlowExchangeNode as any
 };
 
 // Internal component that uses React Flow hooks
@@ -47,37 +43,57 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
   // Transform exchange tree to React Flow format
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     if (!exchangeTree) {
+      console.log('🔍 TreeVisualization: No exchange tree');
       return { nodes: [], edges: [] };
     }
-    return transformExchangeTreeToFlow(exchangeTree);
+    console.log('🔍 TreeVisualization: Transforming exchange tree to flow format');
+    const result = transformExchangeTreeToFlow(exchangeTree);
+    console.log('🔍 TreeVisualization: Transformation result:', {
+      nodesCount: result.nodes.length,
+      edgesCount: result.edges.length
+    });
+    return result;
   }, [exchangeTree]);
 
   // Update node styles when current path changes
   const { nodes, edges } = useMemo(() => {
     if (!exchangeTree || initialNodes.length === 0) {
+      console.log('🔍 TreeVisualization: Skipping style update - no tree or nodes');
       return { nodes: initialNodes, edges: initialEdges };
     }
-    return updateNodeStyles(initialNodes, initialEdges, exchangeTree);
+    console.log('🔍 TreeVisualization: Updating node/edge styles');
+    const result = updateNodeStyles(initialNodes, initialEdges, exchangeTree);
+    console.log('🔍 TreeVisualization: Final edges passed to ReactFlow:', {
+      edgeCount: result.edges.length,
+      edges: result.edges.map(e => ({ 
+        id: e.id, 
+        source: e.source, 
+        target: e.target, 
+        type: e.type,
+        style: e.style 
+      }))
+    });
+    return result;
   }, [initialNodes, initialEdges, exchangeTree]);
 
   // Handle node clicks
-  const handleNodeClick = useCallback(async (event: React.MouseEvent, node: Node) => {
+  const handleNodeClick = useCallback(async (_event: React.MouseEvent, node: Node) => {
+    if (!exchangeTree) return;
+    
     const exchangeId = node.id;
     const exchange = exchangeTree.exchanges[exchangeId];
     if (!exchange) return;
     
-    // Use the assistant node ID if available, otherwise user node ID
-    const nodeId = exchange.metadata.assistant_node_id || exchange.metadata.user_node_id;
-    
+    // Use the exchange ID directly for navigation in exchange-based system
     try {
-      await setCurrentPath(nodeId);
+      await setCurrentPath(exchangeId);
     } catch (error) {
       console.error('Failed to set current path:', error);
     }
   }, [exchangeTree, setCurrentPath]);
 
   // Handle node hover for preview
-  const handleNodeMouseEnter = useCallback((event: React.MouseEvent, node: Node) => {
+  const handleNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => {
     const flowNode = node as FlowExchangeNodeType;
     setPreviewExchange(flowNode.data.exchange);
   }, []);
@@ -105,11 +121,6 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
       }
     }
   }, [reactFlowInstance, exchangeTree, nodes]);
-
-  // Handle manual recenter button click
-  const handleRecenter = useCallback(() => {
-    centerOnSelectedNode();
-  }, [centerOnSelectedNode]);
 
   // Center on selected node when path changes
   useEffect(() => {
@@ -172,7 +183,6 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
           }}
           minZoom={0.3}
           maxZoom={2}
-          defaultZoom={1}
           selectNodesOnDrag={false}
           nodesDraggable={false}
           nodesConnectable={false}
@@ -182,18 +192,6 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
           <Background color="hsl(var(--muted-foreground))" gap={20} />
           <Controls showInteractive={false} />
         </ReactFlow>
-
-        {/* Recenter Button Overlay */}
-        <Button
-          onClick={handleRecenter}
-          variant="secondary"
-          size="sm"
-          className="absolute top-4 right-4 z-10 shadow-lg"
-          aria-label="Center on selected node"
-        >
-          <Target className="h-4 w-4 mr-1" />
-          Center
-        </Button>
       </div>
 
       {/* Exchange Preview Panel */}

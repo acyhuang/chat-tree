@@ -9,17 +9,56 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
-def generate_node_id() -> str:
-    """Generate a unique node ID."""
+def generate_exchange_id() -> str:
+    """Generate a unique exchange ID."""
     return str(uuid4())
+
+
+def generate_node_id() -> str:
+    """Generate a unique node ID (legacy - for backward compatibility)."""
+    return str(uuid4())
+
+
+class ExchangeNode(BaseModel):
+    """
+    Represents a user-assistant exchange in the conversation tree.
+    
+    Each exchange contains both a user message and (optionally) an assistant response,
+    along with metadata and references to parent/children exchanges.
+    """
+    id: str = Field(default_factory=generate_exchange_id, description="Unique identifier for the exchange")
+    user_content: str = Field(description="The user message text")
+    user_summary: str = Field(description="Brief summary of user message for display")
+    assistant_content: Optional[str] = Field(default=None, description="The assistant response text")
+    assistant_summary: Optional[str] = Field(default=None, description="Brief summary of assistant response")
+    assistant_loading: bool = Field(default=False, description="Whether assistant response is being generated")
+    is_complete: bool = Field(default=False, description="Whether both user and assistant parts are present")
+    parent_id: Optional[str] = Field(default=None, description="Reference to parent exchange (null for root)")
+    children_ids: List[str] = Field(default_factory=list, description="Array of child exchange IDs")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    
+    def model_post_init(self, __context: Any) -> None:
+        """Set default metadata values after model initialization."""
+        if "timestamp" not in self.metadata:
+            self.metadata["timestamp"] = datetime.now().isoformat()
+        
+        # Auto-generate user summary if not provided
+        if not self.user_summary:
+            self.user_summary = (self.user_content[:50] + "...") if len(self.user_content) > 50 else self.user_content
+        
+        # Auto-generate assistant summary if assistant content exists
+        if self.assistant_content and not self.assistant_summary:
+            self.assistant_summary = (self.assistant_content[:50] + "...") if len(self.assistant_content) > 50 else self.assistant_content
+        
+        # Update completion status
+        self.is_complete = bool(self.assistant_content and not self.assistant_loading)
 
 
 class ConversationNode(BaseModel):
     """
-    Represents a single message node in the conversation tree.
+    Legacy: Represents a single message node in the conversation tree.
     
-    Each node contains a message from either the user or assistant,
-    along with metadata and references to parent/children nodes.
+    DEPRECATED: Use ExchangeNode instead. Kept for backward compatibility.
     """
     id: str = Field(default_factory=generate_node_id, description="Unique identifier for the node")
     content: str = Field(description="The actual message text")
@@ -40,11 +79,118 @@ class ConversationNode(BaseModel):
             self.summary = (self.content[:50] + "...") if len(self.content) > 50 else self.content
 
 
+class ExchangeTree(BaseModel):
+    """
+    Represents the complete conversation tree structure using exchanges.
+    
+    Contains all exchanges and tracks the current conversation path.
+    """
+    id: str = Field(default_factory=generate_exchange_id, description="Unique identifier for the conversation")
+    exchanges: Dict[str, ExchangeNode] = Field(default_factory=dict, description="Map of exchange ID to exchange")
+    root_id: Optional[str] = Field(default=None, description="ID of the root exchange")
+    current_path: List[str] = Field(default_factory=list, description="Array of exchange IDs from root to current position")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Conversation-level metadata")
+    
+    def model_post_init(self, __context: Any) -> None:
+        """Set default metadata values after model initialization."""
+        if "created_at" not in self.metadata:
+            self.metadata["created_at"] = datetime.now().isoformat()
+    
+    def add_exchange(self, exchange: ExchangeNode, parent_id: Optional[str] = None) -> None:
+        """
+        Add an exchange to the tree.
+        
+        Args:
+            exchange: The exchange to add
+            parent_id: ID of parent exchange (None for root exchange)
+        """
+        # Set parent relationship
+        if parent_id is not None:
+            exchange.parent_id = parent_id
+            # Add to parent's children
+            if parent_id in self.exchanges:
+                self.exchanges[parent_id].children_ids.append(exchange.id)
+        else:
+            # This is the root exchange
+            if self.root_id is None:
+                self.root_id = exchange.id
+                self.current_path = [exchange.id]
+        
+        # Add to exchanges map
+        self.exchanges[exchange.id] = exchange
+    
+    def get_path_to_exchange(self, exchange_id: str) -> List[str]:
+        """
+        Get the path from root to the specified exchange.
+        
+        Args:
+            exchange_id: Target exchange ID
+            
+        Returns:
+            List of exchange IDs from root to target exchange
+        """
+        if exchange_id not in self.exchanges:
+            return []
+        
+        path = []
+        current_id = exchange_id
+        
+        # Walk up the tree to root
+        while current_id is not None:
+            path.insert(0, current_id)
+            current_exchange = self.exchanges.get(current_id)
+            current_id = current_exchange.parent_id if current_exchange else None
+        
+        return path
+    
+    def delete_exchange(self, exchange_id: str) -> bool:
+        """
+        Delete an exchange and all its descendants.
+        
+        Args:
+            exchange_id: ID of exchange to delete
+            
+        Returns:
+            True if exchange was deleted, False if not found
+        """
+        if exchange_id not in self.exchanges:
+            return False
+        
+        exchange = self.exchanges[exchange_id]
+        
+        # Remove from parent's children list
+        if exchange.parent_id and exchange.parent_id in self.exchanges:
+            parent = self.exchanges[exchange.parent_id]
+            if exchange_id in parent.children_ids:
+                parent.children_ids.remove(exchange_id)
+        
+        # Recursively delete all children
+        children_to_delete = exchange.children_ids.copy()
+        for child_id in children_to_delete:
+            self.delete_exchange(child_id)
+        
+        # Delete the exchange itself
+        del self.exchanges[exchange_id]
+        
+        # Update current path if necessary
+        if exchange_id in self.current_path:
+            # Find the last valid exchange in the path
+            valid_path = []
+            for path_exchange_id in self.current_path:
+                if path_exchange_id in self.exchanges:
+                    valid_path.append(path_exchange_id)
+                else:
+                    break
+            self.current_path = valid_path
+        
+        return True
+
+
 class ConversationTree(BaseModel):
     """
-    Represents the complete conversation tree structure.
+    Legacy: Represents the complete conversation tree structure.
     
-    Contains all nodes and tracks the current conversation path.
+    DEPRECATED: Use ExchangeTree instead. Kept for backward compatibility.
     """
     id: str = Field(default_factory=generate_node_id, description="Unique identifier for the conversation")
     nodes: Dict[str, ConversationNode] = Field(default_factory=dict, description="Map of node ID to node")
@@ -146,14 +292,27 @@ class ConversationTree(BaseModel):
         
         return True
 
+    # Legacy methods for backward compatibility
+    def add_node(self, node: ConversationNode, parent_id: Optional[str] = None) -> None:
+        """Legacy method - kept for backward compatibility."""
+        # This would need conversion logic if we want to maintain backward compatibility
+        pass
+    
+    def get_path_to_node(self, node_id: str) -> List[str]:
+        """Legacy method - kept for backward compatibility."""
+        return []
+    
+    def delete_node(self, node_id: str) -> bool:
+        """Legacy method - kept for backward compatibility."""
+        return False
+
 
 # Request/Response models for API endpoints
-class CreateNodeRequest(BaseModel):
-    """Request model for creating a new node."""
-    content: str = Field(description="The message content")
-    role: Literal["user", "assistant"] = Field(description="Message role")
-    parent_id: Optional[str] = Field(default=None, description="Parent node ID")
-    summary: Optional[str] = Field(default=None, description="Optional summary (auto-generated if not provided)")
+class CreateExchangeRequest(BaseModel):
+    """Request model for creating a new exchange."""
+    user_content: str = Field(description="The user message content")
+    parent_id: Optional[str] = Field(default=None, description="Parent exchange ID")
+    user_summary: Optional[str] = Field(default=None, description="Optional user summary (auto-generated if not provided)")
 
 
 class CreateConversationRequest(BaseModel):
@@ -161,32 +320,50 @@ class CreateConversationRequest(BaseModel):
     initial_message: Optional[str] = Field(default=None, description="Optional initial message")
 
 
-class ConversationResponse(BaseModel):
-    """Response model for conversation data."""
-    conversation: ConversationTree = Field(description="The conversation tree")
+class ExchangeTreeResponse(BaseModel):
+    """Response model for exchange tree data."""
+    conversation: ExchangeTree = Field(description="The exchange tree")
 
 
-class NodeResponse(BaseModel):
-    """Response model for node data."""
-    node: ConversationNode = Field(description="The conversation node")
+class ExchangeResponse(BaseModel):
+    """Response model for exchange data."""
+    exchange: ExchangeNode = Field(description="The exchange")
 
 
 class PathResponse(BaseModel):
     """Response model for path data."""
-    path: List[str] = Field(description="Array of node IDs from root to target")
-    nodes: List[ConversationNode] = Field(description="The actual nodes in the path")
+    path: List[str] = Field(description="Array of exchange IDs from root to target")
+    exchanges: List[ExchangeNode] = Field(description="The actual exchanges in the path")
 
 
 class ChatRequest(BaseModel):
     """Request model for sending a chat message."""
     message: str = Field(description="The user message to send")
     conversation_id: str = Field(description="ID of the conversation to add the message to")
-    parent_id: Optional[str] = Field(default=None, description="Parent node ID (defaults to last node in current path)")
+    parent_id: Optional[str] = Field(default=None, description="Parent exchange ID (defaults to last exchange in current path)")
     system_prompt: Optional[str] = Field(default=None, description="Optional system prompt for context")
 
 
 class ChatResponse(BaseModel):
     """Response model for chat interactions."""
-    user_node: ConversationNode = Field(description="The user message node that was created")
-    assistant_node: ConversationNode = Field(description="The assistant response node that was created") 
-    updated_conversation: ConversationTree = Field(description="The updated conversation tree")
+    exchange: ExchangeNode = Field(description="The complete exchange (user + assistant) that was created")
+    updated_conversation: ExchangeTree = Field(description="The updated exchange tree")
+
+
+# Legacy models for backward compatibility
+class CreateNodeRequest(BaseModel):
+    """DEPRECATED: Request model for creating a new node."""
+    content: str = Field(description="The message content")
+    role: Literal["user", "assistant"] = Field(description="Message role")
+    parent_id: Optional[str] = Field(default=None, description="Parent node ID")
+    summary: Optional[str] = Field(default=None, description="Optional summary (auto-generated if not provided)")
+
+
+class ConversationResponse(BaseModel):
+    """DEPRECATED: Response model for conversation data."""
+    conversation: ConversationTree = Field(description="The conversation tree")
+
+
+class NodeResponse(BaseModel):
+    """DEPRECATED: Response model for node data."""
+    node: ConversationNode = Field(description="The conversation node")

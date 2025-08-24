@@ -21,7 +21,7 @@ import './App.css';
 
 function App() {
   const [apiStatus, setApiStatus] = useState<string>('Checking...');
-  const { currentConversation, isLoading, error, createConversation, clearError } = useConversationStore();
+  const { currentExchangeTree, isLoading, error, createConversation, clearError } = useConversationStore();
   const { toggleTheme, isDark } = useTheme();
 
   // Check API health on mount
@@ -44,7 +44,7 @@ function App() {
   // Auto-create conversation if none exists
   useEffect(() => {
     const autoCreateConversation = async () => {
-      if (!currentConversation && !isLoading && apiStatus.includes('Connected')) {
+      if (!currentExchangeTree && !isLoading && apiStatus.includes('Connected')) {
         try {
           await createConversation({ initial_message: null });
         } catch (error) {
@@ -54,7 +54,7 @@ function App() {
     };
 
     autoCreateConversation();
-  }, [currentConversation, isLoading, apiStatus, createConversation]);
+  }, [currentExchangeTree, isLoading, apiStatus, createConversation]);
 
   const handleCreateNewConversation = async () => {
     try {

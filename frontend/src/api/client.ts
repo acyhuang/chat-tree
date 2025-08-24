@@ -6,16 +6,22 @@
  */
 
 import {
-  ConversationTree,
-  ConversationNode,
-  CreateNodeRequest,
+  ExchangeTree,
+  ExchangeNode,
+  CreateExchangeRequest,
   CreateConversationRequest,
-  ConversationResponse,
-  NodeResponse,
+  ExchangeTreeResponse,
+  ExchangeResponse,
   PathResponse,
   ChatRequest,
   ChatResponse,
-  ApiError
+  ApiError,
+  // Legacy types for backward compatibility
+  ConversationTree,
+  ConversationNode,
+  CreateNodeRequest,
+  ConversationResponse,
+  NodeResponse
 } from '../types/conversation';
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -105,13 +111,13 @@ class ApiClient {
     }
   }
 
-  // Conversation Management
+  // Exchange-based Conversation Management
 
   /**
-   * Create a new conversation tree.
+   * Create a new exchange tree.
    */
-  async createConversation(request: CreateConversationRequest): Promise<ConversationTree> {
-    const response = await this.makeRequest<ConversationResponse>('/api/conversations', {
+  async createConversation(request: CreateConversationRequest): Promise<ExchangeTree> {
+    const response = await this.makeRequest<ExchangeTreeResponse>('/api/conversations', {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -119,10 +125,10 @@ class ApiClient {
   }
 
   /**
-   * Get a conversation tree by ID.
+   * Get an exchange tree by ID.
    */
-  async getConversation(conversationId: string): Promise<ConversationTree> {
-    const response = await this.makeRequest<ConversationResponse>(
+  async getConversation(conversationId: string): Promise<ExchangeTree> {
+    const response = await this.makeRequest<ExchangeTreeResponse>(
       `/api/conversations/${conversationId}`
     );
     return response.conversation;
@@ -144,13 +150,54 @@ class ApiClient {
     return this.makeRequest<string[]>('/api/conversations');
   }
 
-  // Node Operations
+  // Exchange Operations
 
   /**
-   * Create a new node in a conversation.
+   * Create a new exchange in a conversation.
+   */
+  async createExchange(conversationId: string, request: CreateExchangeRequest): Promise<ExchangeNode> {
+    const response = await this.makeRequest<ExchangeResponse>(`/api/exchanges?conversation_id=${conversationId}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    return response.exchange;
+  }
+
+  /**
+   * Get a single exchange by ID.
+   */
+  async getExchange(conversationId: string, exchangeId: string): Promise<ExchangeNode> {
+    const response = await this.makeRequest<ExchangeResponse>(
+      `/api/exchanges/${exchangeId}?conversation_id=${conversationId}`
+    );
+    return response.exchange;
+  }
+
+  /**
+   * Delete an exchange and all its children.
+   */
+  async deleteExchange(conversationId: string, exchangeId: string): Promise<void> {
+    await this.makeRequest<void>(`/api/exchanges/${exchangeId}?conversation_id=${conversationId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Get the path from root to a specific exchange.
+   */
+  async getPathToExchange(conversationId: string, exchangeId: string): Promise<PathResponse> {
+    return this.makeRequest<PathResponse>(
+      `/api/exchange-paths/${exchangeId}?conversation_id=${conversationId}`
+    );
+  }
+
+  // Legacy Node Operations (for backward compatibility)
+
+  /**
+   * DEPRECATED: Create a new node in a conversation.
    */
   async createNode(conversationId: string, request: CreateNodeRequest): Promise<ConversationNode> {
-    const response = await this.makeRequest<NodeResponse>(`/api/nodes?conversation_id=${conversationId}`, {
+    const response = await this.makeRequest<NodeResponse>(`/api/legacy/nodes?conversation_id=${conversationId}`, {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -158,30 +205,30 @@ class ApiClient {
   }
 
   /**
-   * Get a single node by ID.
+   * DEPRECATED: Get a single node by ID.
    */
   async getNode(conversationId: string, nodeId: string): Promise<ConversationNode> {
     const response = await this.makeRequest<NodeResponse>(
-      `/api/nodes/${nodeId}?conversation_id=${conversationId}`
+      `/api/legacy/nodes/${nodeId}?conversation_id=${conversationId}`
     );
     return response.node;
   }
 
   /**
-   * Delete a node and all its children.
+   * DEPRECATED: Delete a node and all its children.
    */
   async deleteNode(conversationId: string, nodeId: string): Promise<void> {
-    await this.makeRequest<void>(`/api/nodes/${nodeId}?conversation_id=${conversationId}`, {
+    await this.makeRequest<void>(`/api/legacy/nodes/${nodeId}?conversation_id=${conversationId}`, {
       method: 'DELETE',
     });
   }
 
   /**
-   * Get the path from root to a specific node.
+   * DEPRECATED: Get the path from root to a specific node.
    */
   async getPathToNode(conversationId: string, nodeId: string): Promise<PathResponse> {
     return this.makeRequest<PathResponse>(
-      `/api/paths/${nodeId}?conversation_id=${conversationId}`
+      `/api/legacy/paths/${nodeId}?conversation_id=${conversationId}`
     );
   }
 
@@ -190,11 +237,18 @@ class ApiClient {
   /**
    * Send a chat message and get an LLM response.
    */
-  async sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+  async sendMessage(request: ChatRequest): Promise<ChatResponse> {
     return this.makeRequest<ChatResponse>('/api/chat', {
       method: 'POST',
       body: JSON.stringify(request),
     });
+  }
+
+  /**
+   * DEPRECATED: Send a chat message and get an LLM response.
+   */
+  async sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+    return this.sendMessage(request);
   }
 
   // Utility Methods
