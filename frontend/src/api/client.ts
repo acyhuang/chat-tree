@@ -245,6 +245,97 @@ class ApiClient {
   }
 
   /**
+   * Stream a chat message and get real-time LLM response chunks.
+   */
+  async streamChatMessage(
+    request: ChatRequest,
+    onChunk: (content: string) => void,
+    onExchangeCreated?: (exchangeId: string, conversationId: string) => void,
+    onComplete?: (exchange: any) => void,
+    onError?: (error: string) => void
+  ): Promise<void> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body for streaming');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            break;
+          }
+
+          // Accumulate chunks in buffer to handle partial lines
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          
+          // Keep the last (potentially incomplete) line in buffer
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6); // Remove 'data: ' prefix
+              if (data.trim() === '') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                console.log('Parsed streaming message:', parsed);
+                
+                switch (parsed.type) {
+                  case 'exchange_created':
+                    console.log('Exchange created:', parsed.exchange_id);
+                    onExchangeCreated?.(parsed.exchange_id, parsed.conversation_id);
+                    break;
+                  case 'content':
+                    console.log('Content chunk:', parsed.data);
+                    onChunk(parsed.data);
+                    break;
+                  case 'done':
+                    console.log('Streaming complete');
+                    onComplete?.(parsed.exchange);
+                    return; // Exit successfully
+                  case 'error':
+                    console.error('Streaming error:', parsed.message);
+                    onError?.(parsed.message);
+                    return; // Exit with error
+                  default:
+                    console.warn('Unknown streaming message type:', parsed.type);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse streaming data:', data, parseError);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error';
+      onError?.(errorMessage);
+      throw error;
+    }
+  }
+
+  /**
    * DEPRECATED: Send a chat message and get an LLM response.
    */
   async sendChatMessage(request: ChatRequest): Promise<ChatResponse> {

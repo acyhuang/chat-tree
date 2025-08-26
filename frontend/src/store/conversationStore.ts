@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import { flushSync } from 'react-dom';
 import { 
   ExchangeTree,
   ExchangeNode,
@@ -23,7 +24,8 @@ interface ExchangeConversationState extends ConversationState {
   createConversation: (request: CreateConversationRequest) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
   setCurrentPath: (exchangeId: string) => Promise<void>;
-  sendMessage: (message: string, systemPrompt?: string) => Promise<ChatResponse>;
+  sendMessage: (message: string, systemPrompt?: string) => Promise<ChatResponse | void>;
+  streamMessage: (chatRequest: ChatRequest) => Promise<void>;
   clearError: () => void;
   reset: () => void;
 }
@@ -118,14 +120,20 @@ export const useConversationStore = create<ExchangeConversationState>()(
             system_prompt: systemPrompt
           };
 
-          const response = await apiClient.sendMessage(chatRequest);
-          
-          set({ 
-            currentExchangeTree: response.updated_conversation,
-            isLoading: false 
-          });
-          
-          return response;
+          // Try streaming first, fallback to regular if it fails
+          try {
+            console.log('Attempting to use streaming...');
+            await get().streamMessage(chatRequest);
+            console.log('Streaming completed successfully');
+          } catch (streamError) {
+            console.warn('Streaming failed, falling back to regular message:', streamError);
+            const response = await apiClient.sendMessage(chatRequest);
+            set({ 
+              currentExchangeTree: response.updated_conversation,
+              isLoading: false 
+            });
+            return response;
+          }
         } catch (error) {
           const apiError = error as ApiError;
           set({ 
@@ -134,6 +142,151 @@ export const useConversationStore = create<ExchangeConversationState>()(
           });
           throw error;
         }
+      },
+
+      streamMessage: async (chatRequest: ChatRequest) => {
+        const { currentExchangeTree } = get();
+        if (!currentExchangeTree) {
+          throw new Error('No conversation loaded');
+        }
+
+        // Create optimistic user exchange immediately - no assistant exchange yet
+        const tempUserExchangeId = `temp-user-${Date.now()}`;
+        
+        const optimisticUserExchange: ExchangeNode = {
+          id: tempUserExchangeId,
+          user_content: chatRequest.message,
+          user_summary: "",
+          assistant_content: "",
+          assistant_summary: "",
+          assistant_loading: true, // Mark as loading for assistant response
+          is_complete: false, // Will be completed when assistant responds
+          parent_id: chatRequest.parent_id,
+          children_ids: [],
+          metadata: {
+            timestamp: new Date().toISOString()
+          }
+        };
+
+        // Update conversation optimistically with just the user exchange
+        const optimisticConversation = {
+          ...currentExchangeTree,
+          exchanges: {
+            ...currentExchangeTree.exchanges,
+            [tempUserExchangeId]: optimisticUserExchange
+          },
+          current_path: [...currentExchangeTree.current_path, tempUserExchangeId]
+        };
+
+        // Update parent's children if parent exists
+        if (chatRequest.parent_id && optimisticConversation.exchanges[chatRequest.parent_id]) {
+          const parent = optimisticConversation.exchanges[chatRequest.parent_id];
+          parent.children_ids = [...parent.children_ids, tempUserExchangeId];
+        }
+
+        set({ currentExchangeTree: optimisticConversation });
+
+        // Start streaming
+        let realExchangeId: string | null = null;
+        
+        await apiClient.streamChatMessage(
+          chatRequest,
+          // onChunk: update assistant content
+          (content: string) => {
+            console.debug(`Received chunk: "${content}" (length: ${content.length})`);
+            
+            const currentState = get();
+            if (currentState.currentExchangeTree && realExchangeId) {
+              const exchange = currentState.currentExchangeTree.exchanges[realExchangeId];
+              if (exchange) {
+                // Update the assistant content incrementally
+                const updatedExchange = {
+                  ...exchange,
+                  assistant_content: exchange.assistant_content + content
+                };
+                
+                set({ 
+                  currentExchangeTree: { 
+                    ...currentState.currentExchangeTree,
+                    exchanges: {
+                      ...currentState.currentExchangeTree.exchanges,
+                      [realExchangeId]: updatedExchange
+                    }
+                  } 
+                });
+              }
+            }
+          },
+          // onExchangeCreated: replace temp with real exchange ID
+          (exchangeId: string, conversationId: string) => {
+            realExchangeId = exchangeId;
+            const currentState = get();
+            if (currentState.currentExchangeTree) {
+              // Replace the temporary user exchange ID with the real one
+              const updatedConversation = { ...currentState.currentExchangeTree };
+              const tempUserExchange = updatedConversation.exchanges[tempUserExchangeId];
+              
+              if (tempUserExchange) {
+                // Create new exchange with real ID
+                updatedConversation.exchanges[exchangeId] = {
+                  ...tempUserExchange,
+                  id: exchangeId
+                };
+                
+                // Remove temp exchange
+                delete updatedConversation.exchanges[tempUserExchangeId];
+                
+                // Update current path
+                updatedConversation.current_path = updatedConversation.current_path.map(id => 
+                  id === tempUserExchangeId ? exchangeId : id
+                );
+                
+                // Update parent's children if parent exists
+                if (chatRequest.parent_id && updatedConversation.exchanges[chatRequest.parent_id]) {
+                  const parent = updatedConversation.exchanges[chatRequest.parent_id];
+                  parent.children_ids = parent.children_ids.map(id => 
+                    id === tempUserExchangeId ? exchangeId : id
+                  );
+                }
+                
+                set({ currentExchangeTree: updatedConversation });
+              }
+            }
+          },
+          // onComplete: mark as complete
+          (exchange: any) => {
+            const currentState = get();
+            if (currentState.currentExchangeTree && realExchangeId) {
+              const currentExchange = currentState.currentExchangeTree.exchanges[realExchangeId];
+              if (currentExchange) {
+                const updatedExchange = {
+                  ...currentExchange,
+                  assistant_content: exchange.assistant_content,
+                  assistant_loading: false,
+                  is_complete: true
+                };
+                
+                set({ 
+                  currentExchangeTree: { 
+                    ...currentState.currentExchangeTree,
+                    exchanges: {
+                      ...currentState.currentExchangeTree.exchanges,
+                      [realExchangeId]: updatedExchange
+                    }
+                  },
+                  isLoading: false 
+                });
+              }
+            }
+          },
+          // onError: handle streaming errors
+          (error: string) => {
+            set({ 
+              error: error,
+              isLoading: false 
+            });
+          }
+        );
       },
 
       clearError: () => {

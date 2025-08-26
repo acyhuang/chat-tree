@@ -99,6 +99,68 @@ class OpenAIService:
         except Exception as e:
             logger.error(f"Error calling OpenAI API: {e}")
             raise Exception(f"Failed to generate response: {str(e)}")
+
+    async def generate_chat_response_stream(
+        self, 
+        conversation_history: List[ConversationNode],
+        system_prompt: Optional[str] = None
+    ):
+        """
+        Generate a streaming response from OpenAI given a conversation history.
+        
+        Args:
+            conversation_history: List of conversation nodes representing the chat history
+            system_prompt: Optional system prompt to provide context
+            
+        Yields:
+            Content chunks as they arrive from OpenAI
+            
+        Raises:
+            Exception: If the API call fails
+        """
+        try:
+            # Build messages for OpenAI API
+            messages = []
+            
+            # Add system prompt if provided
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            
+            # Convert conversation nodes to OpenAI message format
+            for node in conversation_history:
+                messages.append({
+                    "role": node.role,
+                    "content": node.content
+                })
+            
+            logger.info(f"Sending {len(messages)} messages to OpenAI API (streaming)")
+            logger.debug(f"Messages: {messages}")
+            
+            # Make streaming API call
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2000,
+                stream=True,
+            )
+            
+            # Yield content chunks as they arrive
+            full_content = ""
+            chunk_count = 0
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_content += content
+                    chunk_count += 1
+                    logger.debug(f"Chunk {chunk_count}: '{content}' (length: {len(content)})")
+                    yield content
+            
+            logger.info(f"Streaming completed - generated {len(full_content)} characters")
+            
+        except Exception as e:
+            logger.error(f"Error in streaming OpenAI API call: {e}")
+            raise Exception(f"Failed to generate streaming response: {str(e)}")
     
     def get_model_info(self) -> dict:
         """Get information about the configured model."""

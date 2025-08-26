@@ -4,9 +4,11 @@ Chat Tree API
 FastAPI backend for the chat-tree conversation visualization application.
 """
 import logging
+import json
 from typing import List
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from models import (
     ExchangeTree, ExchangeNode, CreateExchangeRequest,
@@ -288,6 +290,136 @@ async def get_path_to_node(node_id: str, conversation_id: str):
     return PathResponse(path=path, nodes=path_nodes)
 
 # LLM Interaction Endpoints
+
+@app.post("/api/chat/stream")
+async def stream_chat_message(request: ChatRequest):
+    """
+    Stream a message to the LLM and get a streaming response using exchange-based structure.
+    
+    Creates an exchange with user message, sends conversation history to OpenAI,
+    and streams the assistant response in real-time.
+    """
+    try:
+        logger.info(f"Streaming chat request for exchange tree {request.conversation_id}")
+        
+        # Get the conversation
+        conversation = storage.get_conversation(request.conversation_id)
+        if not conversation:
+            # Auto-recovery: Try to create a new conversation
+            logger.info(f"Auto-creating missing conversation {request.conversation_id}")
+            new_conversation = ExchangeTree()
+            new_conversation.id = request.conversation_id
+            conversation = storage.create_conversation(new_conversation)
+        
+        # Determine parent exchange ID
+        parent_id = request.parent_id
+        if parent_id is None and conversation.current_path:
+            parent_id = conversation.current_path[-1]
+        
+        # Create new exchange with user message
+        exchange = ExchangeNode(
+            user_content=request.message,
+            user_summary="",
+            assistant_loading=True
+        )
+        
+        # Add exchange to conversation
+        updated_conversation = storage.add_exchange_to_conversation(
+            request.conversation_id, exchange, parent_id
+        )
+        
+        if not updated_conversation:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to add exchange to conversation"
+            )
+        
+        # Update current path
+        updated_conversation.current_path = updated_conversation.get_path_to_exchange(exchange.id)
+        
+        # Get conversation history for OpenAI
+        conversation_history = []
+        for exchange_id in updated_conversation.current_path:
+            ex = updated_conversation.exchanges.get(exchange_id)
+            if ex:
+                user_msg = ConversationNode(content=ex.user_content, role="user", summary=ex.user_summary)
+                conversation_history.append(user_msg)
+                
+                if ex.assistant_content and ex.is_complete:
+                    assistant_msg = ConversationNode(content=ex.assistant_content, role="assistant", summary=ex.assistant_summary or "")
+                    conversation_history.append(assistant_msg)
+        
+        async def generate_stream():
+            """Generator function for streaming response"""
+            try:
+                # Send initial message with exchange info
+                initial_data = {
+                    "type": "exchange_created",
+                    "exchange_id": exchange.id,
+                    "conversation_id": request.conversation_id
+                }
+                yield f"data: {json.dumps(initial_data)}\n\n"
+                
+                # Stream assistant response
+                full_response = ""
+                chunk_count = 0
+                async for chunk in openai_service.generate_chat_response_stream(
+                    conversation_history, request.system_prompt
+                ):
+                    full_response += chunk
+                    chunk_count += 1
+                    chunk_data = {
+                        "type": "content",
+                        "data": chunk
+                    }
+                    logger.debug(f"Sending chunk {chunk_count}: '{chunk}' (length: {len(chunk)})")
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                
+                # Complete the exchange
+                exchange.assistant_content = full_response
+                exchange.assistant_loading = False
+                exchange.is_complete = True
+                
+                # Update exchange in storage
+                final_conversation = storage.update_exchange(request.conversation_id, exchange)
+                if final_conversation:
+                    final_conversation.current_path = final_conversation.get_path_to_exchange(exchange.id)
+                    storage.update_conversation(final_conversation)
+                
+                # Send completion message
+                completion_data = {
+                    "type": "done",
+                    "exchange": exchange.model_dump()
+                }
+                yield f"data: {json.dumps(completion_data)}\n\n"
+                
+            except Exception as e:
+                logger.error(f"Error in streaming generator: {e}")
+                error_data = {
+                    "type": "error",
+                    "message": str(e)
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable nginx buffering
+                "Access-Control-Allow-Origin": "http://localhost:5173",
+                "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in streaming chat endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Streaming chat failed: {str(e)}"
+        )
 
 @app.post("/api/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def send_chat_message(request: ChatRequest):

@@ -21,18 +21,22 @@ const MessageInput: React.FC<MessageInputProps> = ({
   className = ''
 }) => {
   const [message, setMessage] = useState('');
-  const { sendMessage, isLoading, error } = useConversationStore();
+  const { sendMessage, isLoading } = useConversationStore();
 
   const handleSendMessage = async () => {
     if (!message.trim() || disabled || isLoading) {
       return;
     }
 
+    const messageToSend = message.trim();
+    setMessage(''); // Clear input immediately for better UX
+    
     try {
-      await sendMessage(message.trim());
-      setMessage(''); // Clear input after successful send
+      await sendMessage(messageToSend);
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Restore message on error so user can try again
+      setMessage(messageToSend);
       // Error is already handled by the store
     }
   };

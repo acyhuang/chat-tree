@@ -19,39 +19,31 @@ export interface FlowExchangeNodeData {
 }
 
 const FlowExchangeNode: React.FC<NodeProps<FlowExchangeNodeData>> = ({ 
-  data, 
-  selected 
+  data
 }) => {
   const {
     exchange,
     isInCurrentPath,
     isSelected,
     isLeaf,
-    canBranch,
-    level
-  } = data;
+    canBranch
+  } = data as FlowExchangeNodeData;
 
   // Determine opacity based on current path
   const opacity = isInCurrentPath ? "opacity-100" : "opacity-50 hover:opacity-100";
   
-  // Truncate content for display
-  const truncateContent = (content: string, maxLength: number = 20) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength - 3) + '...';
-  };
-
   const getUserDisplayContent = () => {
-    return truncateContent(exchange.user_summary || exchange.user_content);
+    return exchange.user_summary || exchange.user_content;
   };
 
   const getAssistantDisplayContent = () => {
     if (exchange.assistant_loading) return "";
     if (!exchange.assistant_content) return "";
-    return truncateContent(exchange.assistant_summary || exchange.assistant_content);
+    return exchange.assistant_summary || exchange.assistant_content;
   };
 
   // Base styling - use isSelected from data rather than React Flow's selected
-  const containerClasses = `relative w-32 h-20 rounded-md transition-all duration-200 ${opacity}`;
+  const containerClasses = `relative w-48 h-24 rounded-md transition-all duration-200 ${opacity}`;
   const borderClasses = isSelected 
     ? "ring-2 ring-ring" 
     : "border-2 border-ring/20 hover:border-ring/50";
@@ -69,24 +61,24 @@ const FlowExchangeNode: React.FC<NodeProps<FlowExchangeNodeData>> = ({
       {/* Exchange Node */}
       <div className={`${containerClasses} ${borderClasses}`}>
         {/* User Section (Top Half) */}
-        <div className="h-1/2 flex items-center left-align px-2 border-b border-primary/20 bg-background rounded-t-md">
-          <span className="text-xs leading-tight text-primary font-medium text-left">
+        <div className="h-1/2 flex items-start justify-start p-2 border-b border-primary/20 bg-muted rounded-t-md">
+          <p className="text-xs leading-tight text-primary font-medium text-left line-clamp-2 overflow-hidden">
             {getUserDisplayContent()}
-          </span>
+          </p>
         </div>
 
         {/* Assistant Section (Bottom Half) */}
-        <div className="h-1/2 flex items-center left-align px-2 bg-muted rounded-b-md">
+        <div className="h-1/2 flex items-start justify-start p-2 bg-background rounded-b-md">
           {exchange.assistant_loading ? (
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 mt-1">
               <div className="w-1 h-1 bg-secondary rounded-full animate-pulse" />
               <div className="w-1 h-1 bg-secondary rounded-full animate-pulse" style={{ animationDelay: '0.1s' }} />
               <div className="w-1 h-1 bg-secondary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
             </div>
           ) : (
-            <span className="text-xs leading-tight text-muted-foreground text-left">
+            <p className="text-xs leading-tight text-muted-foreground text-left line-clamp-2 overflow-hidden">
               {getAssistantDisplayContent()}
-            </span>
+            </p>
           )}
         </div>
       </div>

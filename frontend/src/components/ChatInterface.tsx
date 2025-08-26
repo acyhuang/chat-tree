@@ -5,7 +5,7 @@
  * with messages from user and assistant displayed chronologically.
  */
 import React from 'react';
-import { ExchangeNode } from '../types/conversation';
+import ReactMarkdown from 'react-markdown';
 import { useCurrentExchangeTree } from '../store/conversationStore';
 import MessageInput from './MessageInput';
 
@@ -22,7 +22,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     : [];
 
   // Convert exchanges to individual messages for display
-  const messages: Array<{ id: string; content: string; role: 'user' | 'assistant'; timestamp: string; exchangeId: string }> = [];
+  const messages: Array<{ id: string; content: string; role: 'user' | 'assistant'; timestamp: string; exchangeId: string; isLoading?: boolean }> = [];
   
   currentPathExchanges.forEach(exchange => {
     // Add user message
@@ -34,23 +34,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       exchangeId: exchange.id
     });
     
-    // Add assistant message if available
-    if (exchange.assistant_content && exchange.is_complete) {
+    // Add assistant message only if there's assistant content
+    if (exchange.assistant_content) {
       messages.push({
         id: `${exchange.id}-assistant`,
         content: exchange.assistant_content,
         role: 'assistant',
         timestamp: exchange.metadata.timestamp || new Date().toISOString(),
-        exchangeId: exchange.id
-      });
-    } else if (exchange.assistant_loading) {
-      // Show loading state
-      messages.push({
-        id: `${exchange.id}-assistant-loading`,
-        content: '...',
-        role: 'assistant',
-        timestamp: exchange.metadata.timestamp || new Date().toISOString(),
-        exchangeId: exchange.id
+        exchangeId: exchange.id,
+        isLoading: exchange.assistant_loading && !exchange.is_complete
       });
     }
   });
@@ -77,7 +69,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 pb-6">
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
@@ -101,6 +93,7 @@ interface ChatMessageProps {
     role: 'user' | 'assistant';
     timestamp: string;
     exchangeId: string;
+    isLoading?: boolean;
   };
 }
 
@@ -118,22 +111,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             </div>
           </div>
         ) : (
-          <div className="rounded-lg text-left text-foreground">
-            <div className="whitespace-pre-wrap break-words">
-              {message.content === '...' ? (
-                <div className="flex items-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                  <span className="italic">Assistant is thinking...</span>
-                </div>
-              ) : (
-                message.content
-              )}
+          <div className="rounded-lg px-4 py-3 text-left text-foreground">
+            <div className="markdown-content prose prose-sm max-w-none dark:prose-invert">
+              <ReactMarkdown>
+                {message.content}
+              </ReactMarkdown>
             </div>
           </div>
         )}
-        <div className={`mt-1 text-xs font-medium text-muted-foreground ${isUser ? 'text-right' : 'text-left'}`}>
-          {isUser ? 'You' : 'Assistant'} • {timestamp}
-        </div>
+        {(isUser || !message.isLoading) && (
+          <div className={`mt-1 text-xs font-medium text-muted-foreground ${isUser ? 'text-right' : 'text-left'}`}>
+            {isUser ? 'You' : 'Assistant'} • {timestamp}
+          </div>
+        )}
       </div>
     </div>
   );

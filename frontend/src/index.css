@@ -118,3 +118,81 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Custom markdown styles for assistant messages */
+  .markdown-content ul {
+    list-style-type: disc;
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .markdown-content ol {
+    list-style-type: decimal;
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .markdown-content li {
+    margin-bottom: 0.25rem;
+  }
+  
+  .markdown-content p {
+    margin-bottom: 0.75rem;
+  }
+  
+  .markdown-content p:last-child {
+    margin-bottom: 0;
+  }
+  
+  .markdown-content h1, .markdown-content h2, .markdown-content h3, 
+  .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .markdown-content h1:first-child, .markdown-content h2:first-child, 
+  .markdown-content h3:first-child, .markdown-content h4:first-child, 
+  .markdown-content h5:first-child, .markdown-content h6:first-child {
+    margin-top: 0;
+  }
+  
+  .markdown-content code {
+    background-color: rgb(248 250 252);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+  }
+  
+  .dark .markdown-content code {
+    background-color: rgb(30 41 59);
+  }
+  
+  .markdown-content pre {
+    background-color: rgb(248 250 252);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .dark .markdown-content pre {
+    background-color: rgb(30 41 59);
+  }
+  
+  .markdown-content blockquote {
+    border-left: 4px solid rgb(203 213 225);
+    padding-left: 1rem;
+    font-style: italic;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .dark .markdown-content blockquote {
+    border-left-color: rgb(71 85 105);
+  }
+}
