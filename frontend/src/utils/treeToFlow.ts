@@ -3,6 +3,7 @@
  */
 import { Node, Edge } from '@xyflow/react';
 import { ExchangeTree, ExchangeNode } from '../types/conversation';
+import { logger } from './logger';
 import { conversationUtils } from '../store/conversationStore';
 
 /**
@@ -51,7 +52,7 @@ export function transformExchangeTreeToFlow(
   exchangeTree: ExchangeTree
 ): TreeLayout {
   if (!exchangeTree.root_id) {
-    console.log('🔍 transformExchangeTreeToFlow: No root_id found');
+    logger.debug('No root_id found in exchange tree');
     return { nodes: [], edges: [] };
   }
 
@@ -59,11 +60,7 @@ export function transformExchangeTreeToFlow(
   const edges: Edge[] = [];
   const positions = new Map<string, { x: number; y: number; level: number }>();
 
-  console.log('🔍 transformExchangeTreeToFlow: Starting with tree:', {
-    rootId: exchangeTree.root_id,
-    exchangeCount: Object.keys(exchangeTree.exchanges).length,
-    currentPath: exchangeTree.current_path
-  });
+  // Removed verbose logging
 
   // First pass: Calculate positions for all nodes
   calculateNodePositions(exchangeTree, exchangeTree.root_id, 0, 0, positions);
@@ -71,11 +68,7 @@ export function transformExchangeTreeToFlow(
   // Second pass: Create nodes and edges
   createNodesAndEdges(exchangeTree, exchangeTree.root_id, 0, positions, nodes, edges);
 
-  console.log('🔍 transformExchangeTreeToFlow: Result:', {
-    nodeCount: nodes.length,
-    edgeCount: edges.length,
-    edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, style: e.style }))
-  });
+  logger.debug(`Tree transformed - ${nodes.length} nodes, ${edges.length} edges`);
 
   return { nodes, edges };
 }
@@ -172,13 +165,7 @@ function createNodesAndEdges(
       }
     };
 
-    console.log('🔍 createNodesAndEdges: Creating edge:', {
-      edge,
-      parentId: nodeId,
-      childId: child.id,
-      isInCurrentPath,
-      childrenCount: children.length
-    });
+    // Removed verbose logging
 
     edges.push(edge);
 

@@ -21,8 +21,14 @@ from models import (
 from storage import storage, legacy_storage
 from openai_service import openai_service
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with environment-based levels
+import os
+DEBUG_MODE = os.getenv('DEBUG', 'false').lower() == 'true'
+log_level = logging.DEBUG if DEBUG_MODE else logging.INFO
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -78,7 +84,7 @@ async def create_conversation(request: CreateConversationRequest):
         # Store the conversation
         stored_conversation = storage.create_conversation(conversation)
         
-        logger.info(f"Created new exchange tree {stored_conversation.id}")
+        logger.debug(f"Created new exchange tree {stored_conversation.id}")
         return ExchangeTreeResponse(conversation=stored_conversation)
         
     except Exception as e:
@@ -139,7 +145,7 @@ async def create_exchange(request: CreateExchangeRequest, conversation_id: str):
                 detail=f"Conversation {conversation_id} not found"
             )
         
-        logger.info(f"Created exchange {new_exchange.id} in conversation {conversation_id}")
+        logger.debug(f"Created exchange {new_exchange.id} in conversation {conversation_id}")
         return ExchangeResponse(exchange=new_exchange)
         
     except HTTPException:
@@ -229,7 +235,7 @@ async def create_node(request: CreateNodeRequest, conversation_id: str):
                 detail=f"Conversation {conversation_id} not found"
             )
         
-        logger.info(f"Created node {new_node.id} in conversation {conversation_id}")
+        logger.debug(f"Created node {new_node.id} in conversation {conversation_id}")
         return NodeResponse(node=new_node)
         
     except HTTPException:
@@ -300,13 +306,13 @@ async def stream_chat_message(request: ChatRequest):
     and streams the assistant response in real-time.
     """
     try:
-        logger.info(f"Streaming chat request for exchange tree {request.conversation_id}")
+        logger.info(f"🚀 Starting streaming chat session for conversation {request.conversation_id}")
         
         # Get the conversation
         conversation = storage.get_conversation(request.conversation_id)
         if not conversation:
             # Auto-recovery: Try to create a new conversation
-            logger.info(f"Auto-creating missing conversation {request.conversation_id}")
+            logger.info(f"✨ Auto-creating missing conversation {request.conversation_id}")
             new_conversation = ExchangeTree()
             new_conversation.id = request.conversation_id
             conversation = storage.create_conversation(new_conversation)
@@ -372,7 +378,7 @@ async def stream_chat_message(request: ChatRequest):
                         "type": "content",
                         "data": chunk
                     }
-                    logger.debug(f"Sending chunk {chunk_count}: '{chunk}' (length: {len(chunk)})")
+                    # Removed per-chunk logging for performance
                     yield f"data: {json.dumps(chunk_data)}\n\n"
                 
                 # Complete the exchange
@@ -391,6 +397,7 @@ async def stream_chat_message(request: ChatRequest):
                     "type": "done",
                     "exchange": exchange.model_dump()
                 }
+                logger.info(f"📝 Exchange {exchange.id} completed - {len(full_response)} characters")
                 yield f"data: {json.dumps(completion_data)}\n\n"
                 
             except Exception as e:
@@ -430,7 +437,7 @@ async def send_chat_message(request: ChatRequest):
     and completes the exchange with the assistant response.
     """
     try:
-        logger.info(f"Chat request for exchange tree {request.conversation_id}")
+        logger.info(f"💬 Processing chat request for conversation {request.conversation_id}")
         
         # Debug: List all available conversations
         available_conversations = storage.list_conversations()
@@ -448,7 +455,7 @@ async def send_chat_message(request: ChatRequest):
                 # Force the ID to match what the frontend expects
                 new_conversation.id = request.conversation_id
                 conversation = storage.create_conversation(new_conversation)
-                logger.info(f"Auto-created exchange tree {conversation.id}")
+                logger.info(f"✅ Auto-created conversation {conversation.id}")
             except Exception as e:
                 logger.error(f"Failed to auto-create conversation: {e}")
                 raise HTTPException(
@@ -497,7 +504,7 @@ async def send_chat_message(request: ChatRequest):
                     assistant_msg = ConversationNode(content=ex.assistant_content, role="assistant", summary=ex.assistant_summary or "")
                     conversation_history.append(assistant_msg)
         
-        logger.info(f"Sending {len(conversation_history)} messages to OpenAI for conversation {request.conversation_id}")
+        logger.debug(f"Sending {len(conversation_history)} messages to OpenAI for conversation {request.conversation_id}")
         
         # Get response from OpenAI
         assistant_response = await openai_service.generate_chat_response(
@@ -526,7 +533,7 @@ async def send_chat_message(request: ChatRequest):
         # Update stored conversation with new current path
         storage.update_conversation(final_conversation)
         
-        logger.info(f"Chat completed - created exchange {exchange.id} with user message and assistant response")
+        logger.debug(f"Chat completed - created exchange {exchange.id} with user message and assistant response")
         
         return ChatResponse(
             exchange=exchange,
@@ -548,7 +555,7 @@ async def send_chat_message(request: ChatRequest):
 async def list_conversations():
     """List all conversation IDs (for development/debugging)."""
     conversation_ids = storage.list_conversations()
-    logger.info(f"Current conversations in storage: {conversation_ids}")
+    logger.debug(f"Current conversations in storage: {conversation_ids}")
     return conversation_ids
 
 @app.get("/api/debug/storage")

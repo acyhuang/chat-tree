@@ -40,7 +40,7 @@ class ExchangeStorage:
             The stored conversation
         """
         self._conversations[conversation.id] = conversation
-        logger.info(f"Created conversation {conversation.id}")
+        logger.debug(f"Created conversation {conversation.id}")
         return conversation
     
     def get_conversation(self, conversation_id: str) -> Optional['ExchangeTree']:
@@ -72,7 +72,7 @@ class ExchangeStorage:
         """
         if conversation.id in self._conversations:
             self._conversations[conversation.id] = conversation
-            logger.info(f"Updated conversation {conversation.id}")
+            logger.debug(f"Updated conversation {conversation.id}")
             return conversation
         else:
             logger.error(f"Cannot update non-existent conversation {conversation.id}")
@@ -90,7 +90,7 @@ class ExchangeStorage:
         """
         if conversation_id in self._conversations:
             del self._conversations[conversation_id]
-            logger.info(f"Deleted conversation {conversation_id}")
+            logger.debug(f"Deleted conversation {conversation_id}")
             return True
         else:
             logger.warning(f"Cannot delete non-existent conversation {conversation_id}")
@@ -122,7 +122,7 @@ class ExchangeStorage:
             return None
         
         conversation.add_exchange(exchange, parent_id)
-        logger.info(f"Added exchange {exchange.id} to conversation {conversation_id}")
+        logger.debug(f"Added exchange {exchange.id} to conversation {conversation_id}")
         return conversation
     
     def get_exchange(self, conversation_id: str, exchange_id: str) -> Optional['ExchangeNode']:
@@ -163,7 +163,7 @@ class ExchangeStorage:
             return None
         
         conversation.exchanges[exchange.id] = exchange
-        logger.info(f"Updated exchange {exchange.id} in conversation {conversation_id}")
+        logger.debug(f"Updated exchange {exchange.id} in conversation {conversation_id}")
         return conversation
     
     def delete_exchange_from_conversation(self, conversation_id: str, exchange_id: str) -> Optional['ExchangeTree']:
@@ -182,7 +182,7 @@ class ExchangeStorage:
             return None
         
         if conversation.delete_exchange(exchange_id):
-            logger.info(f"Deleted exchange {exchange_id} from conversation {conversation_id}")
+            logger.debug(f"Deleted exchange {exchange_id} from conversation {conversation_id}")
             return conversation
         else:
             logger.warning(f"Could not delete exchange {exchange_id} from conversation {conversation_id}")
@@ -236,7 +236,7 @@ class ConversationStorage:
     # Keep all legacy methods for backward compatibility
     def create_conversation(self, conversation: 'ConversationTree') -> 'ConversationTree':
         self._conversations[conversation.id] = conversation
-        logger.info(f"Created conversation {conversation.id} (legacy)")
+        logger.debug(f"Created conversation {conversation.id} (legacy)")
         return conversation
     
     def get_conversation(self, conversation_id: str) -> Optional['ConversationTree']:

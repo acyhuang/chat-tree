@@ -5,6 +5,7 @@ Handles communication with OpenAI's API for generating LLM responses.
 """
 import logging
 import os
+import time
 from typing import List, Optional
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -31,7 +32,7 @@ class OpenAIService:
             )
         
         self.client = AsyncOpenAI(api_key=self.api_key)
-        logger.info(f"OpenAI service initialized with model: {self.model}")
+        logger.info(f"🤖 OpenAI service initialized with model: {self.model}")
     
     async def generate_chat_response(
         self, 
@@ -66,8 +67,8 @@ class OpenAIService:
                     "content": node.content
                 })
             
-            logger.info(f"Sending {len(messages)} messages to OpenAI API")
-            logger.debug(f"Messages: {messages}")
+            logger.info(f"📤 Sending {len(messages)} messages to OpenAI API")
+            logger.debug(f"Message structure: {len(messages)} messages, last role: {messages[-1]['role'] if messages else 'none'}")
             
             # Make API call
             response = await self.client.chat.completions.create(
@@ -133,8 +134,8 @@ class OpenAIService:
                     "content": node.content
                 })
             
-            logger.info(f"Sending {len(messages)} messages to OpenAI API (streaming)")
-            logger.debug(f"Messages: {messages}")
+            logger.info(f"📤 Sending {len(messages)} messages to OpenAI API (streaming)")
+            logger.debug(f"Streaming message structure: {len(messages)} messages, last role: {messages[-1]['role'] if messages else 'none'}")
             
             # Make streaming API call
             stream = await self.client.chat.completions.create(
@@ -148,15 +149,16 @@ class OpenAIService:
             # Yield content chunks as they arrive
             full_content = ""
             chunk_count = 0
+            start_time = time.time()
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                     content = chunk.choices[0].delta.content
                     full_content += content
                     chunk_count += 1
-                    logger.debug(f"Chunk {chunk_count}: '{content}' (length: {len(content)})")
                     yield content
             
-            logger.info(f"Streaming completed - generated {len(full_content)} characters")
+            duration = time.time() - start_time
+            logger.info(f"✅ Streaming completed - {len(full_content)} characters in {chunk_count} chunks ({duration:.2f}s)")
             
         except Exception as e:
             logger.error(f"Error in streaming OpenAI API call: {e}")

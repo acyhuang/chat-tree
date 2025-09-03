@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { ExchangeNode } from '../types/conversation';
 import { conversationUtils, useCurrentExchangeTree, useConversationStore } from '../store/conversationStore';
+import { logger } from '../utils/logger';
 import FlowExchangeNode from './FlowExchangeNode';
 import { transformExchangeTreeToFlow, updateNodeStyles, FlowExchangeNode as FlowExchangeNodeType } from '../utils/treeToFlow';
 
@@ -43,36 +44,24 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
   // Transform exchange tree to React Flow format
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     if (!exchangeTree) {
-      console.log('🔍 TreeVisualization: No exchange tree');
+      // Removed verbose logging
       return { nodes: [], edges: [] };
     }
-    console.log('🔍 TreeVisualization: Transforming exchange tree to flow format');
+    // Removed verbose logging
     const result = transformExchangeTreeToFlow(exchangeTree);
-    console.log('🔍 TreeVisualization: Transformation result:', {
-      nodesCount: result.nodes.length,
-      edgesCount: result.edges.length
-    });
+    // Removed verbose logging
     return result;
   }, [exchangeTree]);
 
   // Update node styles when current path changes
   const { nodes, edges } = useMemo(() => {
     if (!exchangeTree || initialNodes.length === 0) {
-      console.log('🔍 TreeVisualization: Skipping style update - no tree or nodes');
+      // Removed verbose logging
       return { nodes: initialNodes, edges: initialEdges };
     }
-    console.log('🔍 TreeVisualization: Updating node/edge styles');
+    // Removed verbose logging
     const result = updateNodeStyles(initialNodes, initialEdges, exchangeTree);
-    console.log('🔍 TreeVisualization: Final edges passed to ReactFlow:', {
-      edgeCount: result.edges.length,
-      edges: result.edges.map(e => ({ 
-        id: e.id, 
-        source: e.source, 
-        target: e.target, 
-        type: e.type,
-        style: e.style 
-      }))
-    });
+    // Removed verbose logging
     return result;
   }, [initialNodes, initialEdges, exchangeTree]);
 
@@ -88,7 +77,7 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
     try {
       await setCurrentPath(exchangeId);
     } catch (error) {
-      console.error('Failed to set current path:', error);
+      logger.error('Failed to set current path:', error);
     }
   }, [exchangeTree, setCurrentPath]);
 

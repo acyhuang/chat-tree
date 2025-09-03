@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useConversationStore } from './store/conversationStore';
 import { apiClient } from './api/client';
 import { useTheme } from './hooks/useTheme';
+import { logger } from './utils/logger';
 import { Button } from './components/ui/button';
 import { Badge } from './components/ui/badge';
 import {
@@ -33,7 +34,7 @@ function App() {
         const conversationLabel = count === 1 ? 'conversation' : 'conversations';
         setApiStatus(`Connected - ${count} ${conversationLabel}`);
       } catch (error) {
-        console.error('API health check failed:', error);
+        logger.error('API health check failed:', error);
         setApiStatus('Backend not available');
       }
     };
@@ -48,7 +49,7 @@ function App() {
         try {
           await createConversation({ initial_message: null });
         } catch (error) {
-          console.error('Failed to auto-create conversation:', error);
+          logger.error('Failed to auto-create conversation:', error);
         }
       }
     };
@@ -61,7 +62,7 @@ function App() {
       clearError();
       await createConversation({ initial_message: null });
     } catch (error) {
-      console.error('Failed to create conversation:', error);
+      logger.error('Failed to create conversation:', error);
     }
   };
 

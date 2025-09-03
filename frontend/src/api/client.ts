@@ -23,6 +23,7 @@ import {
   ConversationResponse,
   NodeResponse
 } from '../types/conversation';
+import { logger } from '../utils/logger';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -297,30 +298,30 @@ class ApiClient {
 
               try {
                 const parsed = JSON.parse(data);
-                console.log('Parsed streaming message:', parsed);
+                logger.debug('Parsed streaming message:', parsed.type);
                 
                 switch (parsed.type) {
                   case 'exchange_created':
-                    console.log('Exchange created:', parsed.exchange_id);
+                    logger.info('Exchange created:', parsed.exchange_id);
                     onExchangeCreated?.(parsed.exchange_id, parsed.conversation_id);
                     break;
                   case 'content':
-                    console.log('Content chunk:', parsed.data);
+                    // Content chunks not logged individually for performance
                     onChunk(parsed.data);
                     break;
                   case 'done':
-                    console.log('Streaming complete');
+                    // Completion logged by store, not here
                     onComplete?.(parsed.exchange);
                     return; // Exit successfully
                   case 'error':
-                    console.error('Streaming error:', parsed.message);
+                    logger.error('Streaming error:', parsed.message);
                     onError?.(parsed.message);
                     return; // Exit with error
                   default:
-                    console.warn('Unknown streaming message type:', parsed.type);
+                    logger.warn('Unknown streaming message type:', parsed.type);
                 }
               } catch (parseError) {
-                console.warn('Failed to parse streaming data:', data, parseError);
+                logger.warn('Failed to parse streaming data:', data, parseError);
               }
             }
           }

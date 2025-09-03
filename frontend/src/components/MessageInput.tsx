@@ -8,6 +8,7 @@ import React, { useState, KeyboardEvent } from 'react';
 import { useConversationStore } from '../store/conversationStore';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+import { logger } from '../utils/logger';
 
 export interface MessageInputProps {
   disabled?: boolean;
@@ -34,7 +35,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
     try {
       await sendMessage(messageToSend);
     } catch (error) {
-      console.error('Failed to send message:', error);
+      logger.error('Failed to send message:', error);
       // Restore message on error so user can try again
       setMessage(messageToSend);
       // Error is already handled by the store

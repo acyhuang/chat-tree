@@ -18,6 +18,7 @@ import {
   ConversationState
 } from '../types/conversation';
 import { apiClient } from '../api/client';
+import { logger } from '../utils/logger';
 
 interface ExchangeConversationState extends ConversationState {
   // Actions
@@ -122,11 +123,11 @@ export const useConversationStore = create<ExchangeConversationState>()(
 
           // Try streaming first, fallback to regular if it fails
           try {
-            console.log('Attempting to use streaming...');
+            logger.info('🚀 Starting streaming chat session');
             await get().streamMessage(chatRequest);
-            console.log('Streaming completed successfully');
+            logger.info('✅ Streaming completed successfully');
           } catch (streamError) {
-            console.warn('Streaming failed, falling back to regular message:', streamError);
+            logger.warn('Streaming failed, falling back to regular message:', streamError);
             const response = await apiClient.sendMessage(chatRequest);
             set({ 
               currentExchangeTree: response.updated_conversation,
@@ -160,7 +161,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
             chatRequest,
             // onChunk: update assistant content incrementally
             (content: string) => {
-              console.debug(`Received chunk: "${content}" (length: ${content.length})`);
+              // Removed verbose chunk logging
               
               const currentState = get();
               if (currentState.currentExchangeTree && realExchangeId) {
@@ -187,7 +188,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
             // onExchangeCreated: exchange created by backend, update frontend immediately
             (exchangeId: string, conversationId: string) => {
               realExchangeId = exchangeId;
-              console.log('Exchange created:', exchangeId);
+              logger.debug('Exchange created:', exchangeId);
               
               // Immediately fetch the updated conversation to show the new exchange
               apiClient.getConversation(conversationId)
