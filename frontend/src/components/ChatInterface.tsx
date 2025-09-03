@@ -4,11 +4,10 @@
  * Shows the current conversation path as a linear chat interface
  * with messages from user and assistant displayed chronologically.
  */
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useCurrentExchangeTree } from '../store/conversationStore';
 import MessageInput from './MessageInput';
-// Logger import removed - not currently used
 
 export interface ChatInterfaceProps {
   className?: string;
@@ -18,12 +17,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const currentExchangeTree = useCurrentExchangeTree();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastScrolledExchangeIdRef = useRef<string | null>(null);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const [isPinToTopActive, setIsPinToTopActive] = useState(false);
-  const [shouldMaintainPosition, setShouldMaintainPosition] = useState(false);
-  const lastUserMessageElementRef = useRef<Element | null>(null);
+  const userHasScrolledRef = useRef<boolean>(false);
 
-  // Find the latest user message element reliably
+  // Find the latest user message element
   const findLatestUserMessage = useCallback((): Element | null => {
     if (!messagesContainerRef.current) return null;
     
@@ -31,67 +27,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     return allUserMessages.length > 0 ? allUserMessages[allUserMessages.length - 1] : null;
   }, []);
 
-  // Pin the user message to the top of the viewport
-  const pinUserMessageToTop = useCallback((userMessage: Element, behavior: ScrollBehavior = 'smooth') => {
-    // Removed verbose logging
-    
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    // Calculate the exact position needed to pin the message at the top
-    const containerRect = container.getBoundingClientRect();
-    const messageRect = userMessage.getBoundingClientRect();
-    
-    // Scroll to position the user message at the top of the container
-    const currentScrollTop = container.scrollTop;
-    const targetScrollTop = currentScrollTop + (messageRect.top - containerRect.top);
-    
-    // Removed verbose logging
-    
-    container.scrollTo({
-      top: targetScrollTop,
-      behavior
-    });
-  }, []);
-
-  // Maintain scroll position during streaming
-  const maintainUserMessagePosition = useCallback(() => {
-    if (!shouldMaintainPosition || !lastUserMessageElementRef.current) return;
-    
-    // Removed verbose logging
-    // Use instant scrolling during streaming to avoid conflicts
-    pinUserMessageToTop(lastUserMessageElementRef.current, 'instant');
-  }, [shouldMaintainPosition, pinUserMessageToTop]);
-
-  // Initialize pin-to-top for new user message
-  const initiatePinToTop = useCallback(() => {
-    // Removed verbose logging
-    
+  // Scroll to the latest user message at the top of the viewport
+  const scrollToLatestUserMessage = useCallback(() => {
     const userMessage = findLatestUserMessage();
     if (!userMessage) {
-      // Removed verbose logging
-      // Use requestAnimationFrame for better DOM timing
+      // If message not found immediately, retry after DOM update
       requestAnimationFrame(() => {
         const retryMessage = findLatestUserMessage();
         if (retryMessage) {
-          // Removed verbose logging
-          lastUserMessageElementRef.current = retryMessage;
-          setIsPinToTopActive(true);
-          setShouldMaintainPosition(true);
-          pinUserMessageToTop(retryMessage, 'smooth');
-        } else {
-          // Removed verbose logging
+          retryMessage.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+          });
         }
       });
       return;
     }
     
-    // Removed verbose logging
-    lastUserMessageElementRef.current = userMessage;
-    setIsPinToTopActive(true);
-    setShouldMaintainPosition(true);
-    pinUserMessageToTop(userMessage, 'smooth');
-  }, [findLatestUserMessage, pinUserMessageToTop]);
+    userMessage.scrollIntoView({ 
+      behavior: 'smooth', 
+      block: 'start' 
+    });
+  }, [findLatestUserMessage]);
+
+  // Detect manual scrolling by user
+  const handleScroll = useCallback(() => {
+    userHasScrolledRef.current = true;
+  }, []);
 
   // Get the current path exchanges for display
   const currentPathExchanges = currentExchangeTree 
@@ -124,56 +86,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     }
   });
 
-  // Detect when exchanges have streaming content
-  const hasStreamingContent = useMemo(() => {
-    return currentPathExchanges.some(ex => ex.assistant_loading && !ex.is_complete);
-  }, [currentPathExchanges]);
-
-  // Setup ResizeObserver to maintain scroll position during streaming
+  // Setup scroll event listener to detect manual scrolling
   useEffect(() => {
-    if (!shouldMaintainPosition || !messagesContainerRef.current) return;
-    
-    // Removed verbose logging
-    
     const container = messagesContainerRef.current;
-    const observer = new ResizeObserver((_entries) => {
-      // Removed verbose logging
-      // Small delay to ensure DOM has settled
-      requestAnimationFrame(() => {
-        maintainUserMessagePosition();
-      });
-    });
-    
-    // Observe the messages container for size changes
-    observer.observe(container);
-    resizeObserverRef.current = observer;
+    if (!container) return;
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
     
     return () => {
-      // Removed verbose logging
-      observer.disconnect();
-      resizeObserverRef.current = null;
+      container.removeEventListener('scroll', handleScroll);
     };
-  }, [shouldMaintainPosition, maintainUserMessagePosition]);
+  }, [handleScroll]);
 
-  // Stop maintaining position when streaming completes
+  // Auto-scroll to user message when new exchange is added
   useEffect(() => {
-    if (!hasStreamingContent && shouldMaintainPosition) {
-      // Removed verbose logging
-      setShouldMaintainPosition(false);
-      setIsPinToTopActive(false);
-      lastUserMessageElementRef.current = null;
-    }
-  }, [hasStreamingContent, shouldMaintainPosition]);
-
-  // Auto-scroll when new user message is added
-  useEffect(() => {
-    // Removed verbose logging
-    
     if (currentPathExchanges.length === 0) {
-      // Removed verbose logging
-      setIsPinToTopActive(false);
-      setShouldMaintainPosition(false);
-      lastUserMessageElementRef.current = null;
+      lastScrolledExchangeIdRef.current = null;
       return;
     }
     
@@ -182,26 +110,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     
     // Only process new exchanges
     if (latestExchangeId === lastScrolledExchangeIdRef.current) {
-      // Removed verbose logging
       return;
     }
     
-    // Removed verbose logging
-    
     lastScrolledExchangeIdRef.current = latestExchangeId;
     
-    // Reset previous state and initiate new pin-to-top
-    setIsPinToTopActive(false);
-    setShouldMaintainPosition(false);
-    lastUserMessageElementRef.current = null;
+    // Reset manual scroll flag for new message
+    userHasScrolledRef.current = false;
     
-    // Use a small delay to ensure DOM has updated with the new message
+    // Scroll to the new user message after DOM update
     requestAnimationFrame(() => {
       setTimeout(() => {
-        initiatePinToTop();
-      }, 50); // Much shorter delay for better responsiveness
+        // Only auto-scroll if user hasn't manually scrolled
+        if (!userHasScrolledRef.current) {
+          scrollToLatestUserMessage();
+        }
+      }, 50);
     });
-  }, [currentPathExchanges.length, initiatePinToTop]);
+  }, [currentPathExchanges.length, scrollToLatestUserMessage]);
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
@@ -218,7 +144,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       {/* Messages Area */}
       <div 
         ref={messagesContainerRef} 
-        className={`flex-1 overflow-y-auto p-4 space-y-4 ${messages.length === 0 ? 'bg-muted' : 'bg-background'} ${isPinToTopActive ? 'scroll-smooth' : ''}`}
+        className={`flex-1 overflow-y-auto p-4 space-y-4 ${messages.length === 0 ? 'bg-muted' : 'bg-background'}`}
       >
         <div className="max-w-3xl mx-auto h-full">
           {messages.length === 0 ? (
