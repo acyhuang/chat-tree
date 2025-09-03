@@ -4,7 +4,7 @@
  * Shows the current conversation path as a linear chat interface
  * with messages from user and assistant displayed chronologically.
  */
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useCurrentExchangeTree } from '../store/conversationStore';
 import MessageInput from './MessageInput';
@@ -15,6 +15,23 @@ export interface ChatInterfaceProps {
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const currentExchangeTree = useCurrentExchangeTree();
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to position the latest user message at the top of the viewport
+  const scrollToLatestUserMessage = () => {
+    if (messagesContainerRef.current) {
+      const latestUserMessage = messagesContainerRef.current.querySelector(
+        '[data-role="user"]:last-of-type'
+      );
+      
+      if (latestUserMessage) {
+        latestUserMessage.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
+      }
+    }
+  };
 
   // Get the current path exchanges for display
   const currentPathExchanges = currentExchangeTree 
@@ -34,11 +51,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       exchangeId: exchange.id
     });
     
-    // Add assistant message only if there's assistant content
-    if (exchange.assistant_content) {
+    // Add assistant message if there's content OR if it's loading
+    if (exchange.assistant_content || exchange.assistant_loading) {
       messages.push({
         id: `${exchange.id}-assistant`,
-        content: exchange.assistant_content,
+        content: exchange.assistant_content || '',
         role: 'assistant',
         timestamp: exchange.metadata.timestamp || new Date().toISOString(),
         exchangeId: exchange.id,
@@ -46,6 +63,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       });
     }
   });
+
+  // Auto-scroll when new messages are added or loading states change
+  useEffect(() => {
+    // Scroll when messages array length changes (new message added)
+    if (messages.length > 0) {
+      // Add a small delay to ensure DOM is updated
+      setTimeout(() => scrollToLatestUserMessage(), 100);
+    }
+  }, [messages.length]);
+
+  // Auto-scroll when AI response completes (loading state changes)
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.isLoading) {
+      // Add a small delay to ensure DOM is updated with complete response
+      setTimeout(() => scrollToLatestUserMessage(), 100);
+    }
+  }, [messages]);
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
@@ -60,7 +95,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       </div>
 
       {/* Messages Area */}
-      <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${messages.length === 0 ? 'bg-muted' : 'bg-background'}`}>
+      <div ref={messagesContainerRef} className={`flex-1 overflow-y-auto p-4 space-y-4 ${messages.length === 0 ? 'bg-muted' : 'bg-background'}`}>
         <div className="max-w-3xl mx-auto h-full">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full min-h-[300px]">
@@ -102,7 +137,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const timestamp = new Date(message.timestamp).toLocaleTimeString();
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`} data-role={message.role}>
       <div className="max-w-[80%]">
         {isUser ? (
           <div className="rounded-lg px-4 py-3 text-left bg-secondary text-secondary-foreground">
@@ -112,11 +147,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           </div>
         ) : (
           <div className="rounded-lg px-4 py-3 text-left text-foreground">
-            <div className="markdown-content prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            {message.isLoading && !message.content ? (
+              <div className="flex items-center space-x-2 text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
+                <span>Assistant is typing...</span>
+              </div>
+            ) : (
+              <div className="markdown-content prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown>
+                  {message.content}
+                </ReactMarkdown>
+                {message.isLoading && (
+                  <div className="inline-flex items-center ml-2">
+                    <div className="animate-spin rounded-full h-3 w-3 border-2 border-current border-t-transparent"></div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {(isUser || !message.isLoading) && (
