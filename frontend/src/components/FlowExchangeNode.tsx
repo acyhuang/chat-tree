@@ -18,7 +18,7 @@ export interface FlowExchangeNodeData {
   level: number;
 }
 
-const FlowExchangeNode: React.FC<NodeProps<FlowExchangeNodeData>> = ({ 
+const FlowExchangeNode: React.FC<NodeProps> = ({ 
   data
 }) => {
   const {
@@ -27,7 +27,7 @@ const FlowExchangeNode: React.FC<NodeProps<FlowExchangeNodeData>> = ({
     isSelected,
     isLeaf,
     canBranch
-  } = data as FlowExchangeNodeData;
+  } = data as unknown as FlowExchangeNodeData;
 
   // Determine opacity based on current path
   const opacity = isInCurrentPath ? "opacity-100" : "opacity-50 hover:opacity-100";
@@ -68,13 +68,11 @@ const FlowExchangeNode: React.FC<NodeProps<FlowExchangeNodeData>> = ({
         </div>
 
         {/* Assistant Section (Bottom Half) */}
-        <div className="h-1/2 flex items-start justify-start p-2 bg-background rounded-b-md">
+        <div className={`h-1/2 flex p-2 bg-background rounded-b-md ${
+          exchange.assistant_loading ? 'items-center justify-center' : 'items-start justify-start'
+        }`}>
           {exchange.assistant_loading ? (
-            <div className="flex items-center space-x-1 mt-1">
-              <div className="w-1 h-1 bg-secondary rounded-full animate-pulse" />
-              <div className="w-1 h-1 bg-secondary rounded-full animate-pulse" style={{ animationDelay: '0.1s' }} />
-              <div className="w-1 h-1 bg-secondary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-            </div>
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-ring border-t-transparent"></div>
           ) : (
             <p className="text-xs leading-tight text-muted-foreground text-left line-clamp-2 overflow-hidden">
               {getAssistantDisplayContent()}

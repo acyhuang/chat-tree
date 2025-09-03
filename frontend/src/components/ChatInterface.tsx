@@ -4,7 +4,7 @@
  * Shows the current conversation path as a linear chat interface
  * with messages from user and assistant displayed chronologically.
  */
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useCurrentExchangeTree } from '../store/conversationStore';
 import MessageInput from './MessageInput';
@@ -16,22 +16,75 @@ export interface ChatInterfaceProps {
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const currentExchangeTree = useCurrentExchangeTree();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastScrolledExchangeIdRef = useRef<string | null>(null);
 
-  // Scroll to position the latest user message at the top of the viewport
-  const scrollToLatestUserMessage = () => {
+  // Scroll to position the latest user message at the top of the viewport (one-time only)
+  const scrollToLatestUserMessage = useCallback(() => {
+    console.log('🎯 SCROLL: Attempting to scroll to latest user message');
+    console.log('🎯 SCROLL: messagesContainerRef.current exists:', !!messagesContainerRef.current);
+    
     if (messagesContainerRef.current) {
-      const latestUserMessage = messagesContainerRef.current.querySelector(
-        '[data-role="user"]:last-of-type'
-      );
+      // Debug DOM structure first
+      console.log('🎯 SCROLL: Container innerHTML preview:', messagesContainerRef.current.innerHTML.slice(0, 500) + '...');
+      
+      const allUserMessages = messagesContainerRef.current.querySelectorAll('[data-role="user"]');
+      console.log('🎯 SCROLL: Found user messages:', allUserMessages.length);
+      
+      // Log details about each user message element
+      allUserMessages.forEach((msg, index) => {
+        console.log(`🎯 SCROLL: User message ${index}:`, {
+          tagName: msg.tagName,
+          className: msg.className,
+          dataRole: msg.getAttribute('data-role'),
+          textPreview: msg.textContent?.slice(0, 50) + '...'
+        });
+      });
+      
+      // Try multiple selector methods
+      const latestUserMessageOld = messagesContainerRef.current.querySelector('[data-role="user"]:last-of-type');
+      const latestUserMessageChild = messagesContainerRef.current.querySelector('[data-role="user"]:last-child');
+      const allMessages = messagesContainerRef.current.querySelectorAll('[data-role="user"]');
+      const latestUserMessageManual = allMessages.length > 0 ? allMessages[allMessages.length - 1] : null;
+      
+      console.log('🎯 SCROLL: Selector results:');
+      console.log('  - :last-of-type:', !!latestUserMessageOld);
+      console.log('  - :last-child:', !!latestUserMessageChild);
+      console.log('  - manual selection:', !!latestUserMessageManual);
+      
+      const latestUserMessage = latestUserMessageManual || latestUserMessageChild || latestUserMessageOld;
       
       if (latestUserMessage) {
+        console.log('🎯 SCROLL: Scrolling to pin user message at top');
         latestUserMessage.scrollIntoView({ 
           behavior: 'smooth', 
           block: 'start' 
         });
+      } else {
+        console.log('🎯 SCROLL: No user message found - will try polling for element');
+        // Try polling with improved selector method
+        let attempts = 0;
+        const pollForElement = () => {
+          attempts++;
+          const allMsgs = messagesContainerRef.current?.querySelectorAll('[data-role="user"]');
+          const userMsg = allMsgs && allMsgs.length > 0 ? allMsgs[allMsgs.length - 1] : null;
+          console.log(`🎯 SCROLL: Polling attempt ${attempts}, found element:`, !!userMsg);
+          console.log(`🎯 SCROLL: Polling found ${allMsgs?.length || 0} user messages total`);
+          
+          if (userMsg) {
+            console.log('🎯 SCROLL: Found user message via polling, scrolling');
+            userMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          } else if (attempts < 5) {
+            setTimeout(pollForElement, 100);
+          } else {
+            console.log('🎯 SCROLL: Polling failed, giving up after 5 attempts');
+          }
+        };
+        setTimeout(pollForElement, 100);
       }
+    } else {
+      console.log('🎯 SCROLL: messagesContainerRef.current is null');
     }
-  };
+  }, []); // Empty dependency array since function doesn't depend on any props/state
 
   // Get the current path exchanges for display
   const currentPathExchanges = currentExchangeTree 
@@ -64,23 +117,48 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     }
   });
 
-  // Auto-scroll when new messages are added or loading states change
+  // Auto-scroll when new user message is added (one-time per exchange)
   useEffect(() => {
-    // Scroll when messages array length changes (new message added)
-    if (messages.length > 0) {
-      // Add a small delay to ensure DOM is updated
-      setTimeout(() => scrollToLatestUserMessage(), 100);
+    console.log('🔄 USEEFFECT: Triggered with currentPathExchanges.length:', currentPathExchanges.length);
+    console.log('🔄 USEEFFECT: Exchange IDs:', currentPathExchanges.map(ex => ex.id));
+    console.log('🔄 USEEFFECT: lastScrolledExchangeIdRef.current:', lastScrolledExchangeIdRef.current);
+    
+    if (currentPathExchanges.length > 0) {
+      const latestExchange = currentPathExchanges[currentPathExchanges.length - 1];
+      const latestExchangeId = latestExchange.id;
+      
+      console.log('🔄 USEEFFECT: Latest exchange ID:', latestExchangeId);
+      console.log('🔄 USEEFFECT: Latest exchange user_content:', latestExchange.user_content?.slice(0, 50) + '...');
+      
+      // Only scroll if this is a new exchange we haven't scrolled for yet
+      if (latestExchangeId !== lastScrolledExchangeIdRef.current) {
+        console.log(`🎯 USEEFFECT: NEW EXCHANGE DETECTED! (${latestExchangeId}) - WILL SCROLL`);
+        lastScrolledExchangeIdRef.current = latestExchangeId;
+        
+        // Scroll immediately for new user message (removed loading state checks)
+        console.log('🎯 USEEFFECT: Scrolling immediately for new exchange');
+        
+        // Use requestAnimationFrame + timeout for better DOM synchronization
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            console.log('🎯 USEEFFECT: Timeout fired, calling scroll function');
+            
+            try {
+              scrollToLatestUserMessage();
+              console.log('🎯 USEEFFECT: Scroll call completed successfully');
+            } catch (error) {
+              console.error('🚨 USEEFFECT: Error calling scrollToLatestUserMessage:', error);
+              console.error('🚨 USEEFFECT: Error stack:', error.stack);
+            }
+          }, 500);
+        });
+      } else {
+        console.log(`🔄 USEEFFECT: Same exchange (${latestExchangeId}), skipping scroll`);
+      }
+    } else {
+      console.log('🔄 USEEFFECT: No exchanges found');
     }
-  }, [messages.length]);
-
-  // Auto-scroll when AI response completes (loading state changes)
-  useEffect(() => {
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.isLoading) {
-      // Add a small delay to ensure DOM is updated with complete response
-      setTimeout(() => scrollToLatestUserMessage(), 100);
-    }
-  }, [messages]);
+  }, [currentExchangeTree, currentPathExchanges.length]); // Changed dependencies to be more reliable
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
@@ -150,7 +228,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             {message.isLoading && !message.content ? (
               <div className="flex items-center space-x-2 text-muted-foreground">
                 <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
-                <span>Assistant is typing...</span>
               </div>
             ) : (
               <div className="markdown-content prose prose-sm max-w-none dark:prose-invert">

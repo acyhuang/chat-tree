@@ -96,7 +96,7 @@ function App() {
               <Button
                 onClick={handleCreateNewConversation}
                 disabled={isLoading}
-                variant="default"
+                variant="outline"
                 size="sm"
               >
                 {isLoading ? 'Creating...' : 'New Conversation'}
