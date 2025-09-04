@@ -70,22 +70,22 @@ const MessageInput: React.FC<MessageInputProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={disabled ? "Load a conversation to start chatting..." : placeholder}
             disabled={disabled || isLoading}
-            className="flex-1 resize-none min-h-[36px] max-h-[120px]"
-            rows={3}
+            className="flex-1 resize-none min-h-[24px] max-h-[120px]"
+            rows={1}
           />
           <Button
             onClick={handleButtonClick}
             disabled={disabled || (!message.trim() && !isLoading)}
             variant="default"
             size="icon"
-            className="self-end rounded-full h-11 w-11 flex items-center justify-center"
+            className="self-end rounded-full size=sm flex items-center justify-center"
           >
             {isLoading ? (
               <Square className="h-4 w-4"
               fill="currentColor"
               strokeWidth={0} />
             ) : (
-              <ArrowUp className="h-4 w-4" />
+              <ArrowUp className="h-4 w-4 stroke-3" />
             )}
           </Button>
         </div>
