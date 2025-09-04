@@ -195,4 +195,53 @@
   .dark .markdown-content blockquote {
     border-left-color: rgb(71 85 105);
   }
+
+  /* React Flow dark mode overrides - Using semantic colors */
+  .dark .react-flow__controls {
+    background: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+  }
+
+  .dark .react-flow__controls-button {
+    background: var(--secondary) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--foreground) !important;
+    fill: var(--foreground) !important;
+  }
+
+  .dark .react-flow__controls .react-flow__controls-button,
+  .dark .react-flow__control-button,
+  .dark [data-testid="rf__controls"] button {
+    background: var(--secondary) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--foreground) !important;
+    fill: var(--foreground) !important;
+  }
+
+  .dark .react-flow__controls-button:hover,
+  .dark .react-flow__controls .react-flow__controls-button:hover,
+  .dark [data-testid="rf__controls"] button:hover {
+    background: var(--accent) !important;
+    color: var(--accent-foreground) !important;
+    fill: var(--accent-foreground) !important;
+  }
+
+  .dark .react-flow__controls-button:disabled,
+  .dark .react-flow__controls .react-flow__controls-button:disabled,
+  .dark [data-testid="rf__controls"] button:disabled {
+    background: var(--muted) !important;
+    color: var(--muted-foreground) !important;
+    fill: var(--muted-foreground) !important;
+    opacity: 0.5 !important;
+  }
+
+  .dark .react-flow__background {
+    background-color: var(--background) !important;
+  }
+
+  .dark .react-flow__edge-path,
+  .dark .react-flow__connection-path {
+    stroke: var(--muted-foreground) !important; /* Semantic edge colors */
+  }
 }

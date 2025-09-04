@@ -25,7 +25,11 @@ export function getThemeColors() {
     background: getCSSVariable('--background') || 'hsl(0 0% 100%)',
     card: getCSSVariable('--card') || 'hsl(0 0% 100%)',
     primary: getCSSVariable('--primary') || 'hsl(222.2 84% 4.9%)',
-    secondary: getCSSVariable('--secondary') || 'hsl(210 40% 96%)'
+    secondary: getCSSVariable('--secondary') || 'hsl(210 40% 96%)',
+    foreground: getCSSVariable('--foreground') || 'hsl(222.2 84% 4.9%)',
+    accent: getCSSVariable('--accent') || 'hsl(210 40% 96%)',
+    accentForeground: getCSSVariable('--accent-foreground') || 'hsl(222.2 84% 4.9%)',
+    muted: getCSSVariable('--muted') || 'hsl(210 40% 96%)'
   };
 }
 
