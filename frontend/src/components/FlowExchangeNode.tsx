@@ -43,7 +43,7 @@ const FlowExchangeNode: React.FC<NodeProps> = ({
   };
 
   // Base styling - use isSelected from data rather than React Flow's selected
-  const containerClasses = `relative w-48 h-24 rounded-md transition-all duration-200 ${opacity}`;
+  const containerClasses = `relative w-48 h-24 rounded-md transition-all duration-200 ${opacity} overflow-hidden`;
   const borderClasses = isSelected 
     ? "ring-2 ring-ring" 
     : "border-2 border-ring/20 hover:border-ring/50";
@@ -61,14 +61,14 @@ const FlowExchangeNode: React.FC<NodeProps> = ({
       {/* Exchange Node */}
       <div className={`${containerClasses} ${borderClasses}`}>
         {/* User Section (Top Half) */}
-        <div className="h-1/2 flex items-start justify-start p-2 border-b border-primary/20 bg-muted rounded-t-md">
+        <div className="h-1/2 flex items-start justify-start p-2 border-b border-primary/20 bg-muted">
           <p className="text-xs leading-tight text-primary font-medium text-left line-clamp-2 overflow-hidden">
             {getUserDisplayContent()}
           </p>
         </div>
 
         {/* Assistant Section (Bottom Half) */}
-        <div className={`h-1/2 flex p-2 bg-background rounded-b-md ${
+        <div className={`h-1/2 flex p-2 bg-background ${
           exchange.assistant_loading ? 'items-center justify-center' : 'items-start justify-start'
         }`}>
           {exchange.assistant_loading ? (
