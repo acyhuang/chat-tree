@@ -250,6 +250,7 @@ class ApiClient {
    */
   async streamChatMessage(
     request: ChatRequest,
+    abortController: AbortController,
     onChunk: (content: string) => void,
     onExchangeCreated?: (exchangeId: string, conversationId: string) => void,
     onComplete?: (exchange: any) => void,
@@ -262,6 +263,7 @@ class ApiClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(request),
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -311,7 +313,8 @@ class ApiClient {
                     break;
                   case 'done':
                     // Completion logged by store, not here
-                    onComplete?.(parsed.exchange);
+                    // Backend now sends final_content directly, not in exchange object
+                    onComplete?.(parsed);
                     return; // Exit successfully
                   case 'error':
                     logger.error('Streaming error:', parsed.message);
@@ -330,6 +333,11 @@ class ApiClient {
         reader.releaseLock();
       }
     } catch (error) {
+      // Check if this was an abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+      
       const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error';
       onError?.(errorMessage);
       throw error;
@@ -344,6 +352,19 @@ class ApiClient {
   }
 
   // Utility Methods
+
+  /**
+   * Save an interrupted exchange to the backend.
+   */
+  async saveInterruptedExchange(conversationId: string, exchange: ExchangeNode): Promise<void> {
+    await this.makeRequest<{ status: string; exchange_id: string }>(
+      `/api/exchanges/save-interrupted?conversation_id=${conversationId}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(exchange),
+      }
+    );
+  }
 
   /**
    * Check if the backend is healthy.

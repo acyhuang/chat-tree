@@ -5,6 +5,7 @@ Experimental UI for chatting with LLMs. Represents the conversation as a graph o
 
 **Features:**
 - Send messages to and receive messages from LLMs
+- Stop generation of messages
 - Show conversation as a tree of nodes where each node is a message
 - Allow creation of leaf nodes (branching) and deletion of nodes
 - Allow switching between paths from root to leaf (context)

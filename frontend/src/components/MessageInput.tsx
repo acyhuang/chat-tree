@@ -8,6 +8,7 @@ import React, { useState, KeyboardEvent } from 'react';
 import { useConversationStore } from '../store/conversationStore';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+import { ArrowUp, Square } from 'lucide-react';
 import { logger } from '../utils/logger';
 
 export interface MessageInputProps {
@@ -22,10 +23,10 @@ const MessageInput: React.FC<MessageInputProps> = ({
   className = ''
 }) => {
   const [message, setMessage] = useState('');
-  const { sendMessage, isLoading } = useConversationStore();
+  const { sendMessage, isLoading, stopGeneration } = useConversationStore();
 
   const handleSendMessage = async () => {
-    if (!message.trim() || disabled || isLoading) {
+    if (!message.trim() || disabled) {
       return;
     }
 
@@ -39,6 +40,16 @@ const MessageInput: React.FC<MessageInputProps> = ({
       // Restore message on error so user can try again
       setMessage(messageToSend);
       // Error is already handled by the store
+    }
+  };
+
+  const handleButtonClick = async () => {
+    if (isLoading) {
+      // Stop the generation
+      stopGeneration();
+    } else {
+      // Send the message
+      await handleSendMessage();
     }
   };
 
@@ -59,23 +70,22 @@ const MessageInput: React.FC<MessageInputProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={disabled ? "Load a conversation to start chatting..." : placeholder}
             disabled={disabled || isLoading}
-            className="flex-1 resize-none min-h-[44px] max-h-[120px]"
+            className="flex-1 resize-none min-h-[36px] max-h-[120px]"
             rows={3}
           />
           <Button
-            onClick={handleSendMessage}
-            disabled={disabled || isLoading || !message.trim()}
+            onClick={handleButtonClick}
+            disabled={disabled || (!message.trim() && !isLoading)}
             variant="default"
-            size="default"
-            className="self-end"
+            size="icon"
+            className="self-end rounded-full h-11 w-11 flex items-center justify-center"
           >
             {isLoading ? (
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                <span>Sending...</span>
-              </div>
+              <Square className="h-4 w-4"
+              fill="currentColor"
+              strokeWidth={0} />
             ) : (
-              'Send'
+              <ArrowUp className="h-4 w-4" />
             )}
           </Button>
         </div>

@@ -7,7 +7,6 @@
 
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { flushSync } from 'react-dom';
 import { 
   ExchangeTree,
   ExchangeNode,
@@ -27,6 +26,9 @@ interface ExchangeConversationState extends ConversationState {
   setCurrentPath: (exchangeId: string) => Promise<void>;
   sendMessage: (message: string, systemPrompt?: string) => Promise<ChatResponse | void>;
   streamMessage: (chatRequest: ChatRequest) => Promise<void>;
+  stopGeneration: () => void;
+  saveInterruptedExchange: (exchange: ExchangeNode) => Promise<void>;
+  saveCompletedExchange: (exchange: ExchangeNode) => Promise<void>;
   clearError: () => void;
   reset: () => void;
 }
@@ -36,6 +38,11 @@ const initialState = {
   isLoading: false,
   error: null,
 };
+
+// Global abort controller for stream cancellation
+let currentAbortController: AbortController | null = null;
+// Track the currently streaming exchange for proper cleanup on interruption
+let currentStreamingExchangeId: string | null = null;
 
 export const useConversationStore = create<ExchangeConversationState>()(
   devtools(
@@ -121,19 +128,12 @@ export const useConversationStore = create<ExchangeConversationState>()(
             system_prompt: systemPrompt
           };
 
-          // Try streaming first, fallback to regular if it fails
-          try {
-            logger.info('🚀 Starting streaming chat session');
-            await get().streamMessage(chatRequest);
+          // Use streaming for all messages
+          logger.info('🚀 Starting streaming chat session');
+          await get().streamMessage(chatRequest);
+          // Only log success if we reach this point without being aborted
+          if (currentAbortController && !currentAbortController.signal.aborted) {
             logger.info('✅ Streaming completed successfully');
-          } catch (streamError) {
-            logger.warn('Streaming failed, falling back to regular message:', streamError);
-            const response = await apiClient.sendMessage(chatRequest);
-            set({ 
-              currentExchangeTree: response.updated_conversation,
-              isLoading: false 
-            });
-            return response;
           }
         } catch (error) {
           const apiError = error as ApiError;
@@ -151,7 +151,11 @@ export const useConversationStore = create<ExchangeConversationState>()(
           throw new Error('No conversation loaded');
         }
 
-        set({ isLoading: true, error: null });
+        // isLoading is already set to true by sendMessage, no need to duplicate
+
+        // Create new abort controller for this request
+        currentAbortController = new AbortController();
+        const abortController = currentAbortController;
 
         let realExchangeId: string | null = null;
         
@@ -159,6 +163,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
           // Start streaming - the backend will create the exchange with assistant_loading: true
           await apiClient.streamChatMessage(
             chatRequest,
+            abortController,
             // onChunk: update assistant content incrementally
             (content: string) => {
               // Removed verbose chunk logging
@@ -185,31 +190,72 @@ export const useConversationStore = create<ExchangeConversationState>()(
                 }
               }
             },
-            // onExchangeCreated: exchange created by backend, update frontend immediately
-            (exchangeId: string, conversationId: string) => {
+            // onExchangeCreated: create exchange locally instead of fetching from backend
+            (exchangeId: string, _conversationId: string) => {
               realExchangeId = exchangeId;
-              logger.debug('Exchange created:', exchangeId);
+              currentStreamingExchangeId = exchangeId;
+              logger.debug('Exchange created locally:', exchangeId);
               
-              // Immediately fetch the updated conversation to show the new exchange
-              apiClient.getConversation(conversationId)
-                .then(updatedConversation => {
-                  // Set the current path to include the new exchange
-                  updatedConversation.current_path = conversationUtils.getPathToExchange(updatedConversation, exchangeId);
-                  
-                  set({ 
-                    currentExchangeTree: updatedConversation,
-                    isLoading: false 
-                  });
-                })
-                .catch(error => {
-                  console.error('Failed to fetch updated conversation:', error);
-                  set({ 
-                    error: 'Failed to update conversation after exchange creation',
-                    isLoading: false 
-                  });
+              // Create exchange locally instead of fetching from backend
+              const currentState = get();
+              if (currentState.currentExchangeTree) {
+                const newExchange: ExchangeNode = {
+                  id: exchangeId,
+                  user_content: chatRequest.message,
+                  user_summary: '',
+                  assistant_content: '',
+                  assistant_summary: '',
+                  assistant_loading: true,
+                  is_complete: false,
+                  parent_id: chatRequest.parent_id || null,
+                  children_ids: [],
+                  metadata: {
+                    timestamp: new Date().toISOString()
+                  }
+                };
+
+                // Add to local state and update parent relationships
+                const updatedExchanges = {
+                  ...currentState.currentExchangeTree.exchanges,
+                  [exchangeId]: newExchange
+                };
+                
+                // Update parent's children if needed
+                if (newExchange.parent_id && updatedExchanges[newExchange.parent_id]) {
+                  const parent = updatedExchanges[newExchange.parent_id];
+                  if (!parent.children_ids.includes(exchangeId)) {
+                    updatedExchanges[newExchange.parent_id] = {
+                      ...parent,
+                      children_ids: [...parent.children_ids, exchangeId]
+                    };
+                  }
+                }
+
+                // Handle root_id assignment (port from backend logic)
+                // If this is the first exchange (no parent_id) and no root_id exists, set as root
+                const shouldSetAsRoot = !newExchange.parent_id && !currentState.currentExchangeTree.root_id;
+                const newRootId = shouldSetAsRoot ? exchangeId : currentState.currentExchangeTree.root_id;
+
+                // Calculate new path to the exchange
+                const tempTree = { 
+                  ...currentState.currentExchangeTree, 
+                  exchanges: updatedExchanges,
+                  root_id: newRootId
+                };
+                const newPath = conversationUtils.getPathToExchange(tempTree, exchangeId);
+
+                set({
+                  currentExchangeTree: {
+                    ...currentState.currentExchangeTree,
+                    exchanges: updatedExchanges,
+                    root_id: newRootId,
+                    current_path: newPath
+                  }
+                  // Keep isLoading: true during streaming
                 });
+              }
             },
-            // onComplete: mark as complete and ensure final content is set
+            // onComplete: mark as complete, ensure final content is set, and save to backend
             (exchange: any) => {
               const currentState = get();
               if (currentState.currentExchangeTree && realExchangeId) {
@@ -217,11 +263,12 @@ export const useConversationStore = create<ExchangeConversationState>()(
                 if (currentExchange) {
                   const updatedExchange = {
                     ...currentExchange,
-                    assistant_content: exchange.assistant_content,
+                    assistant_content: exchange.assistant_content || exchange.final_content || currentExchange.assistant_content,
                     assistant_loading: false,
                     is_complete: true
                   };
                   
+                  // Update local state immediately
                   set({ 
                     currentExchangeTree: { 
                       ...currentState.currentExchangeTree,
@@ -232,8 +279,13 @@ export const useConversationStore = create<ExchangeConversationState>()(
                     },
                     isLoading: false 
                   });
+
+                  // Save completed exchange to backend (fire-and-forget)
+                  get().saveCompletedExchange(updatedExchange);
                 }
               }
+              // Clear streaming exchange tracking
+              currentStreamingExchangeId = null;
             },
             // onError: handle streaming errors
             (error: string) => {
@@ -241,15 +293,108 @@ export const useConversationStore = create<ExchangeConversationState>()(
                 error: error,
                 isLoading: false 
               });
+              // Clear streaming exchange tracking on error
+              currentStreamingExchangeId = null;
             }
           );
         } catch (error) {
+          // Check if this was an abort
+          if (abortController.signal.aborted) {
+            set({ isLoading: false });
+            // Clear streaming exchange tracking on abort
+            currentStreamingExchangeId = null;
+            return;
+          }
+          
           const apiError = error as ApiError;
           set({ 
             error: apiError.detail || apiError.message, 
             isLoading: false 
           });
           throw error;
+        } finally {
+          // Clear the abort controller
+          if (currentAbortController === abortController) {
+            currentAbortController = null;
+          }
+          // Clear streaming exchange tracking in finally block
+          if (currentStreamingExchangeId && abortController.signal.aborted) {
+            currentStreamingExchangeId = null;
+          }
+        }
+      },
+
+      stopGeneration: () => {
+        if (currentAbortController && !currentAbortController.signal.aborted) {
+          logger.info('Stopping message generation');
+          currentAbortController.abort();
+          
+          // Mark the currently streaming exchange as complete and save to backend
+          if (currentStreamingExchangeId) {
+            const currentState = get();
+            if (currentState.currentExchangeTree) {
+              const streamingExchange = currentState.currentExchangeTree.exchanges[currentStreamingExchangeId];
+              if (streamingExchange) {
+                const updatedExchange = {
+                  ...streamingExchange,
+                  assistant_loading: false,
+                  is_complete: true
+                };
+                
+                // Update local state immediately
+                set({ 
+                  currentExchangeTree: { 
+                    ...currentState.currentExchangeTree,
+                    exchanges: {
+                      ...currentState.currentExchangeTree.exchanges,
+                      [currentStreamingExchangeId]: updatedExchange
+                    }
+                  },
+                  isLoading: false 
+                });
+
+                // Save interrupted exchange to backend (fire-and-forget)
+                get().saveInterruptedExchange(updatedExchange);
+              }
+            }
+            // Clear streaming exchange tracking
+            currentStreamingExchangeId = null;
+          } else {
+            set({ isLoading: false });
+          }
+        }
+      },
+
+      saveInterruptedExchange: async (exchange: ExchangeNode) => {
+        const { currentExchangeTree } = get();
+        if (!currentExchangeTree) {
+          logger.warn('Cannot save interrupted exchange: no conversation loaded');
+          return;
+        }
+
+        try {
+          await apiClient.saveInterruptedExchange(currentExchangeTree.id, exchange);
+          logger.info('✅ Interrupted exchange saved to backend:', exchange.id);
+        } catch (error) {
+          logger.error('❌ Failed to save interrupted exchange:', error);
+          // Don't throw - we don't want to disrupt the user experience
+          // The exchange is still visible in the frontend
+        }
+      },
+
+      saveCompletedExchange: async (exchange: ExchangeNode) => {
+        const { currentExchangeTree } = get();
+        if (!currentExchangeTree) {
+          logger.warn('Cannot save completed exchange: no conversation loaded');
+          return;
+        }
+
+        try {
+          await apiClient.saveInterruptedExchange(currentExchangeTree.id, exchange);
+          logger.info('✅ Completed exchange saved to backend:', exchange.id);
+        } catch (error) {
+          logger.error('❌ Failed to save completed exchange:', error);
+          // Non-critical error - exchange is already visible to user
         }
       },
 
@@ -299,7 +444,7 @@ export const conversationUtils = {
     let currentId: string | null = exchangeId;
     
     while (currentId && exchangeTree.exchanges[currentId]) {
-      const exchange = exchangeTree.exchanges[currentId];
+      const exchange: ExchangeNode = exchangeTree.exchanges[currentId];
       if (exchange.parent_id) {
         depth++;
         currentId = exchange.parent_id;
@@ -340,7 +485,7 @@ export const conversationUtils = {
     
     while (currentId && exchangeTree.exchanges[currentId]) {
       path.unshift(currentId);
-      const exchange = exchangeTree.exchanges[currentId];
+      const exchange: ExchangeNode = exchangeTree.exchanges[currentId];
       currentId = exchange.parent_id;
     }
     

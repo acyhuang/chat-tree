@@ -5,8 +5,9 @@ FastAPI backend for the chat-tree conversation visualization application.
 """
 import logging
 import json
+import uuid
 from typing import List
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -322,31 +323,16 @@ async def stream_chat_message(request: ChatRequest):
         if parent_id is None and conversation.current_path:
             parent_id = conversation.current_path[-1]
         
-        # Create new exchange with user message
-        exchange = ExchangeNode(
-            user_content=request.message,
-            user_summary="",
-            assistant_loading=True
-        )
+        # Generate a new exchange ID for the frontend to use
+        exchange_id = str(uuid.uuid4())
         
-        # Add exchange to conversation
-        updated_conversation = storage.add_exchange_to_conversation(
-            request.conversation_id, exchange, parent_id
-        )
+        # We won't create the exchange in storage yet - frontend will handle it
+        logger.info(f"Generated exchange ID {exchange_id} for frontend")
         
-        if not updated_conversation:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to add exchange to conversation"
-            )
-        
-        # Update current path
-        updated_conversation.current_path = updated_conversation.get_path_to_exchange(exchange.id)
-        
-        # Get conversation history for OpenAI
+        # Get conversation history for OpenAI (use existing path)
         conversation_history = []
-        for exchange_id in updated_conversation.current_path:
-            ex = updated_conversation.exchanges.get(exchange_id)
+        for existing_exchange_id in conversation.current_path:
+            ex = conversation.exchanges.get(existing_exchange_id)
             if ex:
                 user_msg = ConversationNode(content=ex.user_content, role="user", summary=ex.user_summary)
                 conversation_history.append(user_msg)
@@ -355,13 +341,17 @@ async def stream_chat_message(request: ChatRequest):
                     assistant_msg = ConversationNode(content=ex.assistant_content, role="assistant", summary=ex.assistant_summary or "")
                     conversation_history.append(assistant_msg)
         
+        # Add the current user message to history
+        current_user_msg = ConversationNode(content=request.message, role="user", summary="")
+        conversation_history.append(current_user_msg)
+        
         async def generate_stream():
             """Generator function for streaming response"""
             try:
-                # Send initial message with exchange info
+                # Send initial message with exchange ID (frontend will create exchange locally)
                 initial_data = {
                     "type": "exchange_created",
-                    "exchange_id": exchange.id,
+                    "exchange_id": exchange_id,
                     "conversation_id": request.conversation_id
                 }
                 yield f"data: {json.dumps(initial_data)}\n\n"
@@ -381,23 +371,13 @@ async def stream_chat_message(request: ChatRequest):
                     # Removed per-chunk logging for performance
                     yield f"data: {json.dumps(chunk_data)}\n\n"
                 
-                # Complete the exchange
-                exchange.assistant_content = full_response
-                exchange.assistant_loading = False
-                exchange.is_complete = True
-                
-                # Update exchange in storage
-                final_conversation = storage.update_exchange(request.conversation_id, exchange)
-                if final_conversation:
-                    final_conversation.current_path = final_conversation.get_path_to_exchange(exchange.id)
-                    storage.update_conversation(final_conversation)
-                
-                # Send completion message
+                # Send completion message with final content (frontend will save)
                 completion_data = {
                     "type": "done",
-                    "exchange": exchange.model_dump()
+                    "exchange_id": exchange_id,
+                    "final_content": full_response
                 }
-                logger.info(f"📝 Exchange {exchange.id} completed - {len(full_response)} characters")
+                logger.info(f"📝 Exchange {exchange_id} completed - {len(full_response)} characters")
                 yield f"data: {json.dumps(completion_data)}\n\n"
                 
             except Exception as e:
@@ -427,6 +407,72 @@ async def stream_chat_message(request: ChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Streaming chat failed: {str(e)}"
         )
+
+@app.post("/api/exchanges/save-interrupted", status_code=status.HTTP_200_OK)
+async def save_interrupted_exchange(
+    conversation_id: str = Query(..., description="ID of the conversation"),
+    exchange: ExchangeNode = Body(..., description="Exchange data to save")
+):
+    """
+    Save an interrupted exchange to the conversation.
+    Used when frontend interrupts streaming and needs to persist partial content.
+    """
+    try:
+        logger.info(f"💾 Saving interrupted exchange {exchange.id} to conversation {conversation_id}")
+        
+        # Get conversation
+        conversation = storage.get_conversation(conversation_id)
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+        
+        # Add or update the exchange
+        if exchange.id in conversation.exchanges:
+            # Update existing exchange
+            logger.info(f"Updating existing exchange {exchange.id}")
+            conversation.exchanges[exchange.id] = exchange
+        else:
+            # Add new exchange
+            logger.info(f"Adding new exchange {exchange.id}")
+            conversation.exchanges[exchange.id] = exchange
+            
+            # Update parent's children if needed
+            if exchange.parent_id and exchange.parent_id in conversation.exchanges:
+                parent = conversation.exchanges[exchange.parent_id]
+                if exchange.id not in parent.children_ids:
+                    parent.children_ids.append(exchange.id)
+                    logger.info(f"Added {exchange.id} as child of {exchange.parent_id}")
+        
+        # Update current path to include this exchange
+        conversation.current_path = conversation.get_path_to_exchange(exchange.id)
+        
+        # Save to storage
+        updated_conversation = storage.update_conversation(conversation)
+        if not updated_conversation:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update conversation in storage"
+            )
+        
+        logger.info(f"✅ Successfully saved interrupted exchange {exchange.id}")
+        return {
+            "status": "success", 
+            "exchange_id": exchange.id,
+            "message": "Exchange saved successfully"
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save interrupted exchange: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save interrupted exchange: {str(e)}"
+        )
+
 
 @app.post("/api/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def send_chat_message(request: ChatRequest):
