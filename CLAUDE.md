@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Chat-tree is an experimental UI for chatting with LLMs that represents conversations as a graph of nodes, allowing for branching and context-building. It's a monorepo with separate frontend and backend services.
 
 **Architecture:**
-- Frontend: React + TypeScript + Vite + Tailwind + Zustand
-- Backend: Python + FastAPI + OpenAI API
+- Frontend: React 19 + TypeScript + Vite + Tailwind + Zustand
+- Backend: Python + FastAPI + OpenAI API (with streaming)
 - No persistence (in-memory storage only)
 - No authentication (prototype scope)
 
@@ -36,36 +36,38 @@ uvicorn main:app --reload --port 8000 # Start development server
 ## Core Architecture
 
 ### Data Model
-The application centers around a tree structure where each conversation is represented as a `ConversationTree` containing `ConversationNode` objects:
+The application centers around a tree structure where each conversation is represented as an `ExchangeTree` containing `ExchangeNode` objects:
 
-- **ConversationNode**: Individual messages with `id`, `content`, `summary`, `role` ("user"|"assistant"), `parent_id`, and `children_ids`
-- **ConversationTree**: Container with `nodes` map, `root_id`, and `current_path` array
-- **Current Path**: Array of node IDs from root to current position, determines what's shown in chat interface
+- **ExchangeNode**: User-assistant exchanges with `id`, `user_content`, `assistant_content`, completion status, `parent_id`, and `children_ids`
+- **ExchangeTree**: Container with `exchanges` map, `root_id`, and `current_path` array
+- **Current Path**: Array of exchange IDs from root to current position, determines what's shown in chat interface
 
 ### State Management
 Uses Zustand for lightweight state management:
 - Single store in `frontend/src/store/conversationStore.ts`
-- Actions for CRUD operations on conversations and nodes
+- Actions for CRUD operations on conversations and exchanges
+- Streaming support with real-time message updates
 - Utility functions for path navigation and tree operations
 - Automatic error handling and loading states
 
 ### API Architecture
 RESTful API with endpoints organized by functionality:
-- **Conversations**: Create, read, delete conversation trees
-- **Nodes**: Create, read, delete individual nodes within conversations
-- **Chat**: Send messages to OpenAI and create response nodes
+- **Conversations**: Create, read, delete exchange trees
+- **Exchanges**: Create, read, delete individual exchanges within conversations
+- **Chat**: Send messages to OpenAI with streaming support
 - **Paths**: Navigate between different conversation branches
 
 Key files:
-- `backend/main.py`: FastAPI app with all endpoints
-- `backend/models.py`: Pydantic models for request/response schemas
+- `backend/main.py`: FastAPI app with all endpoints including streaming
+- `backend/models.py`: Pydantic models for exchange-based schemas
 - `backend/storage.py`: In-memory storage implementation
-- `backend/openai_service.py`: OpenAI API integration
+- `backend/openai_service.py`: OpenAI API integration with streaming support
 
 ### Frontend Structure
 - `src/components/ChatInterface.tsx`: Main chat view showing current conversation path
 - `src/components/TreeVisualization.tsx`: Interactive tree view with pan/zoom
-- `src/components/TreeNode.tsx`: Individual node rendering in tree
+- `src/components/FlowExchangeNode.tsx`: Individual exchange rendering in tree
+- `src/components/MessageInput.tsx`: Message input with streaming support
 - `src/api/client.ts`: API client for backend communication
 - `src/types/conversation.ts`: TypeScript type definitions
 
@@ -77,10 +79,10 @@ Three-panel layout:
 
 Tree visualization features:
 - Vertical layout (root at top)
-- Pan/zoom with react-zoom-pan-pinch
+- Pan/zoom with @xyflow/react
 - Current path highlighting
 - Branch opacity changes on hover
-- Node content previews
+- Exchange content previews
 
 ## Development Notes
 
@@ -89,12 +91,13 @@ Start backend first on port 8000, then frontend on port 5173. CORS is configured
 
 ### Key Patterns
 - Tree operations always work through the Zustand store
+- Streaming updates happen in real-time via server-sent events
 - API calls automatically refresh conversation state
 - Error boundaries handle API failures gracefully
 - Loading states prevent UI inconsistencies during async operations
 
 ### OpenAI Integration
-Requires `OPENAI_API_KEY` environment variable in backend. Uses GPT-4o mini model by default. Conversation history is sent as array of messages following OpenAI chat format.
+Requires `OPENAI_API_KEY` environment variable in backend. Uses GPT-4o mini model by default. Conversation history is sent as array of messages following OpenAI chat format. Supports both regular and streaming responses.
 
 ### Testing
 No test framework currently configured. When adding tests, examine existing project structure to determine appropriate testing approach.

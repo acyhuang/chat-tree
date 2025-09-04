@@ -3,9 +3,9 @@ Experimental UI for chatting with LLMs. Provides ability to control context by r
 
 
 TODO
+- merge branches
+- quote messages
 - pin user message to top on send
-- scroll to message on node selection (with directionality)
+- scroll to message on node selection (with directionality) - just need scroll up
 - recenter tree on resize
 - fix node hover preview
-- merge branches
-- fix react flow controls in dark mode
