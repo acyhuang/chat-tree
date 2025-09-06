@@ -74,38 +74,29 @@ const ExchangePreviewDialog: React.FC<ExchangePreviewDialogProps> = ({
         <div ref={scrollableContentRef} className="flex-1 overflow-y-auto min-h-0">
           <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
             {/* User Message */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-3">
-                <div className="flex-shrink-0 w-3 h-3 rounded-full bg-primary" />
-                <span className="text-sm font-medium text-foreground">You</span>
-              </div>
-              <div className="ml-6 p-3 sm:p-4 rounded-lg bg-secondary/50 border border-secondary">
-                <div className="whitespace-pre-wrap break-words text-sm text-secondary-foreground">
-                  {exchange.user_content}
+            <div className="flex justify-end">
+              <div className="max-w-[80%]">
+                <div className="rounded-lg px-4 py-3 text-left bg-secondary text-secondary-foreground">
+                  <div className="whitespace-pre-wrap break-words">
+                    {exchange.user_content}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Assistant Response */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-3">
-                <div className={`flex-shrink-0 w-3 h-3 rounded-full ${
-                  exchange.assistant_loading ? 'bg-secondary animate-pulse' : 'bg-secondary'
-                }`} />
-                <span className="text-sm font-medium text-foreground">Assistant</span>
-              </div>
-              
-              <div className="ml-6">
+            <div className="flex justify-start">
+              <div className="max-w-[80%]">
                 {exchange.assistant_loading && !exchange.assistant_content ? (
-                  <div className="p-3 sm:p-4 rounded-lg bg-muted/50 border border-muted">
+                  <div className="rounded-lg px-4 py-3 text-left text-foreground">
                     <div className="flex items-center space-x-2 text-muted-foreground">
                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
                       <span className="text-sm italic">Assistant is thinking...</span>
                     </div>
                   </div>
                 ) : exchange.assistant_content ? (
-                  <div className="p-3 sm:p-4 rounded-lg bg-muted/30 border border-muted">
-                    <div className="markdown-content prose prose-sm max-w-none dark:prose-invert text-foreground">
+                  <div className="rounded-lg px-4 py-3 text-left text-foreground">
+                    <div className="markdown-content prose prose-sm max-w-none dark:prose-invert">
                       <ReactMarkdown>
                         {exchange.assistant_content}
                       </ReactMarkdown>
@@ -118,7 +109,7 @@ const ExchangePreviewDialog: React.FC<ExchangePreviewDialogProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3 sm:p-4 rounded-lg bg-muted/50 border border-muted">
+                  <div className="rounded-lg px-4 py-3 text-left text-foreground">
                     <span className="text-sm text-muted-foreground italic">No response yet</span>
                   </div>
                 )}
