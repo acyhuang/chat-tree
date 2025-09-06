@@ -4,11 +4,11 @@
  * Features:
  * - Vertical layout with root at top
  * - Pan/zoom functionality via React Flow
- * - Node preview on hover
+ * - Global exchange preview via hover
  * - Context switching on node click
  * - Visual indicators for current path and branching
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -18,7 +18,6 @@ import {
   Node
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ExchangeNode } from '../types/conversation';
 import { conversationUtils, useCurrentExchangeTree, useConversationStore } from '../store/conversationStore';
 import { logger } from '../utils/logger';
 import FlowExchangeNode from './FlowExchangeNode';
@@ -37,9 +36,8 @@ const nodeTypes = {
 // Internal component that uses React Flow hooks
 const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '' }) => {
   // ALL HOOKS FIRST - must be called in the same order every render
-  const { setCurrentPath } = useConversationStore();
+  const { setCurrentPath, setPreviewExchange } = useConversationStore();
   const exchangeTree = useCurrentExchangeTree();
-  const [previewExchange, setPreviewExchange] = useState<ExchangeNode | null>(null);
   const reactFlowInstance = useReactFlow();
 
   // Transform exchange tree to React Flow format
@@ -80,11 +78,11 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
   const handleNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => {
     const flowNode = node as FlowExchangeNodeType;
     setPreviewExchange(flowNode.data.exchange);
-  }, []);
+  }, [setPreviewExchange]);
 
   const handleNodeMouseLeave = useCallback(() => {
     setPreviewExchange(null);
-  }, []);
+  }, [setPreviewExchange]);
 
   // Handle centering on selected node
   const centerOnSelectedNode = useCallback(() => {
@@ -177,56 +175,6 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
           </Badge>
         </div>
       </div>
-
-      {/* Exchange Preview Panel */}
-      {previewExchange && (
-        <div className="flex-shrink-0 border-t border-border bg-card p-4 max-h-40 overflow-y-auto tree-preview-panel">
-          <div className="space-y-3">
-            {/* User Message */}
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0 w-2 h-2 rounded-full mt-2 bg-primary" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2 mb-1">
-                  <span className="text-sm font-medium text-foreground">You</span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(previewExchange.metadata.timestamp || Date.now()).toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground line-clamp-2">
-                  {previewExchange.user_content}
-                </p>
-              </div>
-            </div>
-
-            {/* Assistant Response */}
-            {previewExchange.is_complete ? (
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-2 h-2 rounded-full mt-2 bg-secondary" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <span className="text-sm font-medium text-foreground">Assistant</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {previewExchange.assistant_content}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 w-2 h-2 rounded-full mt-2 bg-secondary animate-pulse" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <span className="text-sm font-medium text-foreground">Assistant</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground italic">
-                    Thinking...
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -20,6 +20,9 @@ import { apiClient } from '../api/client';
 import { logger } from '../utils/logger';
 
 interface ExchangeConversationState extends ConversationState {
+  // Hover preview state
+  previewExchange: ExchangeNode | null;
+  
   // Actions
   createConversation: (request: CreateConversationRequest) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
@@ -29,6 +32,7 @@ interface ExchangeConversationState extends ConversationState {
   stopGeneration: () => void;
   saveInterruptedExchange: (exchange: ExchangeNode) => Promise<void>;
   saveCompletedExchange: (exchange: ExchangeNode) => Promise<void>;
+  setPreviewExchange: (exchange: ExchangeNode | null) => void;
   clearError: () => void;
   reset: () => void;
 }
@@ -37,6 +41,7 @@ const initialState = {
   currentExchangeTree: null,
   isLoading: false,
   error: null,
+  previewExchange: null,
 };
 
 // Global abort controller for stream cancellation
@@ -398,6 +403,10 @@ export const useConversationStore = create<ExchangeConversationState>()(
         }
       },
 
+      setPreviewExchange: (exchange: ExchangeNode | null) => {
+        set({ previewExchange: exchange });
+      },
+
       clearError: () => {
         set({ error: null });
       },
@@ -506,4 +515,9 @@ export const useIsLoading = () => {
 // Hook to get error state
 export const useError = () => {
   return useConversationStore(state => state.error);
+};
+
+// Hook to get preview exchange state
+export const usePreviewExchange = () => {
+  return useConversationStore(state => state.previewExchange);
 };

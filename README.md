@@ -9,4 +9,3 @@ TODO
 - pin user message to top on send
 - scroll to message on node selection (with directionality) - just need scroll up
 - recenter tree on resize
-- fix node hover preview

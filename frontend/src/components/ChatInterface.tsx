@@ -6,8 +6,9 @@
  */
 import React, { useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { useCurrentExchangeTree } from '../store/conversationStore';
+import { useCurrentExchangeTree, usePreviewExchange } from '../store/conversationStore';
 import MessageInput from './MessageInput';
+import ExchangePreviewDialog from './ExchangePreviewDialog';
 
 export interface ChatInterfaceProps {
   className?: string;
@@ -15,6 +16,7 @@ export interface ChatInterfaceProps {
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const currentExchangeTree = useCurrentExchangeTree();
+  const previewExchange = usePreviewExchange();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastScrolledExchangeIdRef = useRef<string | null>(null);
   const userHasScrolledRef = useRef<boolean>(false);
@@ -130,7 +132,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   }, [currentPathExchanges.length, scrollToLatestUserMessage]);
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div className={`flex flex-col h-full ${className} relative`}>
       {/* Chat Header */}
       {/* <div className="flex-shrink-0 p-4 border-b border-border bg-card">
         {currentExchangeTree && (
@@ -167,6 +169,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       <div className="flex-shrink-0 border-t border-border bg-card">
         <MessageInput disabled={!currentExchangeTree} />
       </div>
+
+      {/* Exchange Preview Dialog Overlay */}
+      <ExchangePreviewDialog exchange={previewExchange} />
     </div>
   );
 };

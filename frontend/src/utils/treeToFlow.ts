@@ -165,7 +165,8 @@ function createNodesAndEdges(
       type: 'smoothstep',
       animated: false,
       style: {
-        stroke: isInCurrentPath ? colors.mutedForeground : colors.border
+        stroke: colors.mutedForeground,
+        strokeWidth: 2
       }
     };
 
@@ -227,9 +228,8 @@ export function updateNodeStyles(
       ...edge,
       style: {
         ...edge.style,
-        stroke: isEdgeInActivePath ? colors.mutedForeground : colors.border,
-        strokeWidth: isEdgeInActivePath ? 2 : 1,
-        opacity: isEdgeInActivePath ? 1 : 0.5
+        strokeWidth: 2,
+        opacity: isEdgeInActivePath ? 1 : 0.2
       }
     };
   });
