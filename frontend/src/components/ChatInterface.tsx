@@ -132,14 +132,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   return (
     <div className={`flex flex-col h-full ${className}`}>
       {/* Chat Header */}
-      <div className="flex-shrink-0 p-4 border-b border-border bg-card">
+      {/* <div className="flex-shrink-0 p-4 border-b border-border bg-card">
         {currentExchangeTree && (
           <p className="text-sm text-muted-foreground">
             Conversation: {currentExchangeTree.id.slice(0, 8)}... 
             ({currentPathExchanges.length} exchanges, {messages.length} messages)
           </p>
         )}
-      </div>
+      </div> */}
 
       {/* Messages Area */}
       <div 

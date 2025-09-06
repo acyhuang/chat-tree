@@ -4,6 +4,7 @@ Experimental UI for chatting with LLMs. Provides ability to control context by r
 
 TODO
 - merge branches
+- delete nodes
 - quote messages
 - pin user message to top on send
 - scroll to message on node selection (with directionality) - just need scroll up

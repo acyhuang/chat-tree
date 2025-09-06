@@ -32,7 +32,8 @@ function App() {
         const health = await apiClient.healthCheck();
         const count = health.storage_stats.total_conversations;
         const conversationLabel = count === 1 ? 'conversation' : 'conversations';
-        setApiStatus(`Connected - ${count} ${conversationLabel}`);
+        setApiStatus(`Connected`);
+        // setApiStatus(`Connected - ${count} ${conversationLabel}`);
       } catch (error) {
         logger.error('API health check failed:', error);
         setApiStatus('Backend not available');
@@ -76,12 +77,12 @@ function App() {
               <p className="text-base text-foreground">
                 chat-tree
               </p>
-              <div className="flex items-center space-x-2">
+              {/* <div className="flex items-center space-x-2">
                 <span className="text-sm text-muted-foreground">API:</span>
                 <Badge variant={apiStatus.includes('Connected') ? 'secondary' : 'destructive'}>
                   {apiStatus}
                 </Badge>
-              </div>
+              </div> */}
             </div>
             
             <div className="flex items-center space-x-2">

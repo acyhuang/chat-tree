@@ -23,6 +23,7 @@ import { conversationUtils, useCurrentExchangeTree, useConversationStore } from 
 import { logger } from '../utils/logger';
 import FlowExchangeNode from './FlowExchangeNode';
 import { transformExchangeTreeToFlow, updateNodeStyles, FlowExchangeNode as FlowExchangeNodeType } from '../utils/treeToFlow';
+import { Badge } from './ui/badge';
 
 export interface TreeVisualizationProps {
   className?: string;
@@ -44,24 +45,18 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
   // Transform exchange tree to React Flow format
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     if (!exchangeTree) {
-      // Removed verbose logging
       return { nodes: [], edges: [] };
     }
-    // Removed verbose logging
     const result = transformExchangeTreeToFlow(exchangeTree);
-    // Removed verbose logging
     return result;
   }, [exchangeTree]);
 
   // Update node styles when current path changes
   const { nodes, edges } = useMemo(() => {
     if (!exchangeTree || initialNodes.length === 0) {
-      // Removed verbose logging
       return { nodes: initialNodes, edges: initialEdges };
     }
-    // Removed verbose logging
     const result = updateNodeStyles(initialNodes, initialEdges, exchangeTree);
-    // Removed verbose logging
     return result;
   }, [initialNodes, initialEdges, exchangeTree]);
 
@@ -148,14 +143,6 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
 
   return (
     <div className={`flex flex-col h-full bg-muted ${className}`}>
-      {/* Tree Header */}
-      <div className="flex-shrink-0 p-4 border-b border-border bg-card">
-        <p className="text-sm text-muted-foreground">
-          {Object.keys(exchangeTree.exchanges).length} exchanges • 
-          {conversationUtils.getLeafNodes(exchangeTree).length} branches
-        </p>
-      </div>
-
       {/* Tree Visualization */}
       <div className="flex-1 relative overflow-hidden">
         <ReactFlow
@@ -181,6 +168,14 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
           <Background color="hsl(var(--muted-foreground))" gap={20} />
           <Controls showInteractive={false} />
         </ReactFlow>
+        
+        {/* Stats Badge Overlay */}
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 pointer-events-none z-10">
+          <Badge variant="secondary" className="bg-card/90 backdrop-blur-sm border shadow-md">
+            {Object.keys(exchangeTree.exchanges).length} {Object.keys(exchangeTree.exchanges).length === 1 ? 'exchange' : 'exchanges'} • 
+            {conversationUtils.getLeafNodes(exchangeTree).length} {conversationUtils.getLeafNodes(exchangeTree).length === 1 ? 'branch' : 'branches'}
+          </Badge>
+        </div>
       </div>
 
       {/* Exchange Preview Panel */}
