@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import { useCurrentExchangeTree, usePreviewExchange } from '../store/conversationStore';
 import MessageInput from './MessageInput';
 import ExchangePreviewDialog from './ExchangePreviewDialog';
+import { logger } from '../utils/logger';
 
 export interface ChatInterfaceProps {
   className?: string;
@@ -18,49 +19,61 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const currentExchangeTree = useCurrentExchangeTree();
   const previewExchange = usePreviewExchange();
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const lastScrolledExchangeIdRef = useRef<string | null>(null);
-  const userHasScrolledRef = useRef<boolean>(false);
+  const lastMessageCountRef = useRef<number>(0);
+  const lastContentHashRef = useRef<string>('');
+  const userScrolledUpRef = useRef<boolean>(false);
 
-  // Find the latest user message element
-  const findLatestUserMessage = useCallback((): Element | null => {
-    if (!messagesContainerRef.current) return null;
+  // Check if user has scrolled up from bottom
+  const checkUserScrollPosition = useCallback(() => {
+    if (!messagesContainerRef.current) return;
     
-    const allUserMessages = messagesContainerRef.current.querySelectorAll('[data-role="user"]');
-    return allUserMessages.length > 0 ? allUserMessages[allUserMessages.length - 1] : null;
+    const container = messagesContainerRef.current;
+    const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50; // 50px threshold
+    userScrolledUpRef.current = !isAtBottom;
+    
+    logger.info('ChatInterface: scroll position check', {
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight, 
+      scrollHeight: container.scrollHeight,
+      isAtBottom,
+      userScrolledUp: userScrolledUpRef.current
+    });
   }, []);
 
-  // Scroll to the latest user message at the top of the viewport
-  const scrollToLatestUserMessage = useCallback(() => {
-    const userMessage = findLatestUserMessage();
-    if (!userMessage) {
-      // If message not found immediately, retry after DOM update
-      requestAnimationFrame(() => {
-        const retryMessage = findLatestUserMessage();
-        if (retryMessage) {
-          retryMessage.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start' 
-          });
-        }
-      });
+  // Simple scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    if (!messagesContainerRef.current) {
+      logger.info('ChatInterface: no container ref for scroll');
       return;
     }
     
-    userMessage.scrollIntoView({ 
-      behavior: 'smooth', 
-      block: 'start' 
+    const container = messagesContainerRef.current;
+    logger.info('ChatInterface: scrolling to bottom', {
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+      currentScrollTop: container.scrollTop
     });
-  }, [findLatestUserMessage]);
-
-  // Detect manual scrolling by user
-  const handleScroll = useCallback(() => {
-    userHasScrolledRef.current = true;
+    
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth'
+    });
   }, []);
+
+
+
+
+
+
+
+
 
   // Get the current path exchanges for display
   const currentPathExchanges = currentExchangeTree 
     ? currentExchangeTree.current_path.map(id => currentExchangeTree.exchanges[id]).filter(Boolean)
     : [];
+
+
 
   // Convert exchanges to individual messages for display
   const messages: Array<{ id: string; content: string; role: 'user' | 'assistant'; timestamp: string; exchangeId: string; isLoading?: boolean }> = [];
@@ -88,48 +101,71 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     }
   });
 
-  // Setup scroll event listener to detect manual scrolling
+  // Create content hash to detect streaming updates
+  const createContentHash = useCallback(() => {
+    return messages.map(msg => `${msg.id}:${msg.content.length}:${msg.isLoading || false}`).join('|');
+  }, [messages]);
+
+
+  // Auto-scroll when messages change OR content updates (streaming)
+  useEffect(() => {
+    const currentMessageCount = messages.length;
+    const currentContentHash = createContentHash();
+    
+    // Check if we should scroll - either new messages OR content changed
+    const hasNewMessages = currentMessageCount > lastMessageCountRef.current;
+    const hasContentChanged = currentContentHash !== lastContentHashRef.current;
+    
+    if (hasNewMessages || hasContentChanged) {
+      logger.info('ChatInterface: content changes detected', {
+        hasNewMessages,
+        hasContentChanged,
+        oldCount: lastMessageCountRef.current,
+        newCount: currentMessageCount,
+        userScrolledUp: userScrolledUpRef.current
+      });
+      
+      // Only auto-scroll if user hasn't manually scrolled up
+      if (!userScrolledUpRef.current) {
+        // Immediate scroll
+        scrollToBottom();
+        
+        // Also try after DOM update for streaming content
+        setTimeout(() => {
+          if (!userScrolledUpRef.current) { // Check again in case user scrolled
+            scrollToBottom();
+          }
+        }, 50);
+        
+        // Final attempt after a longer delay for slow content updates
+        setTimeout(() => {
+          if (!userScrolledUpRef.current) {
+            scrollToBottom();
+          }
+        }, 200);
+      }
+    }
+    
+    // Update refs
+    lastMessageCountRef.current = currentMessageCount;
+    lastContentHashRef.current = currentContentHash;
+  }, [messages.length, createContentHash, scrollToBottom]);
+
+  // Add scroll listener to detect user manual scrolling
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
+
+    const handleScroll = () => {
+      checkUserScrollPosition();
+    };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     
     return () => {
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [handleScroll]);
-
-  // Auto-scroll to user message when new exchange is added
-  useEffect(() => {
-    if (currentPathExchanges.length === 0) {
-      lastScrolledExchangeIdRef.current = null;
-      return;
-    }
-    
-    const latestExchange = currentPathExchanges[currentPathExchanges.length - 1];
-    const latestExchangeId = latestExchange.id;
-    
-    // Only process new exchanges
-    if (latestExchangeId === lastScrolledExchangeIdRef.current) {
-      return;
-    }
-    
-    lastScrolledExchangeIdRef.current = latestExchangeId;
-    
-    // Reset manual scroll flag for new message
-    userHasScrolledRef.current = false;
-    
-    // Scroll to the new user message after DOM update
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        // Only auto-scroll if user hasn't manually scrolled
-        if (!userHasScrolledRef.current) {
-          scrollToLatestUserMessage();
-        }
-      }, 50);
-    });
-  }, [currentPathExchanges.length, scrollToLatestUserMessage]);
+  }, [checkUserScrollPosition]);
 
   return (
     <div className={`flex flex-col h-full ${className} relative`}>
@@ -229,5 +265,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
     </div>
   );
 };
+
 
 export default ChatInterface;
