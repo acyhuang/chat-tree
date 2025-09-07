@@ -33,14 +33,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     const container = messagesContainerRef.current;
     const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50; // 50px threshold
     userScrolledUpRef.current = !isAtBottom;
-    
-    logger.info('ChatInterface: scroll position check', {
-      scrollTop: container.scrollTop,
-      clientHeight: container.clientHeight, 
-      scrollHeight: container.scrollHeight,
-      isAtBottom,
-      userScrolledUp: userScrolledUpRef.current
-    });
   }, []);
 
   // Get the current path exchanges for display
@@ -76,51 +68,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     }
   });
 
-  // DISABLED: Auto-scroll when messages change OR content updates (streaming)
-  // This has been replaced with pin-to-top behavior
-  // useEffect(() => {
-  //   const currentMessageCount = messages.length;
-  //   const currentContentHash = createContentHash();
-  //   
-  //   // Check if we should scroll - either new messages OR content changed
-  //   const hasNewMessages = currentMessageCount > lastMessageCountRef.current;
-  //   const hasContentChanged = currentContentHash !== lastContentHashRef.current;
-  //   
-  //   if (hasNewMessages || hasContentChanged) {
-  //     logger.info('ChatInterface: content changes detected', {
-  //       hasNewMessages,
-  //       hasContentChanged,
-  //       oldCount: lastMessageCountRef.current,
-  //       newCount: currentMessageCount,
-  //       userScrolledUp: userScrolledUpRef.current
-  //     });
-  //     
-  //     // Only auto-scroll if user hasn't manually scrolled up
-  //     if (!userScrolledUpRef.current) {
-  //       // Immediate scroll
-  //       scrollToBottom();
-  //       
-  //       // Also try after DOM update for streaming content
-  //       setTimeout(() => {
-  //         if (!userScrolledUpRef.current) { // Check again in case user scrolled
-  //           scrollToBottom();
-  //         }
-  //       }, 50);
-  //       
-  //       // Final attempt after a longer delay for slow content updates
-  //       setTimeout(() => {
-  //         if (!userScrolledUpRef.current) {
-  //           scrollToBottom();
-  //         }
-  //       }, 200);
-  //     }
-  //   }
-  //   
-  //   // Update refs
-  //   lastMessageCountRef.current = currentMessageCount;
-  //   lastContentHashRef.current = currentContentHash;
-  // }, [messages.length, createContentHash, scrollToBottom]);
-
   // Add scroll listener to detect user manual scrolling
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -139,7 +86,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   // Pin-to-top: Detect new user messages and handle pin-to-top behavior
   useEffect(() => {
-    console.log('🔥 useEffect IS running', { messagesLength: messages.length });
     if (messages.length === 0) return;
     
     // Find the most recent user message, regardless of position
@@ -148,22 +94,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     const isNewUserMessage = lastUserMessage && 
       lastUserMessage.id !== lastProcessedUserMessageRef.current;
     
-    console.log('🔥 Message check', {
-      totalMessages: messages.length,
-      userMessages: userMessages.length,
-      lastUserId: lastUserMessage?.id?.slice(-8) || 'none',
-      trackedId: lastProcessedUserMessageRef.current?.slice(-8) || 'none',
-      isNewUserMessage
-    });
-    
     if (isNewUserMessage && messagesContainerRef.current) {
-      console.log('🔝 PIN-TO-TOP: New user message detected', { messageId: lastUserMessage.id });
-      
       // Calculate spacer height (viewport + buffer)
       const container = messagesContainerRef.current;
       const viewportHeight = container.clientHeight;
-      const bufferHeight = 200; // Extra padding buffer
-      const newSpacerHeight = viewportHeight + bufferHeight;
+      const newSpacerHeight = viewportHeight;
       
       // Update spacer height
       setSpacerHeight(newSpacerHeight);
@@ -182,14 +117,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
             const container = messagesContainerRef.current;
             const targetScrollTop = lastUserMessageElement.offsetTop - 16; // 16px padding from top
             
-            console.log('🔝 PIN-TO-TOP: Scrolling to position', { targetScrollTop });
-            
             container.scrollTo({
               top: targetScrollTop,
               behavior: 'smooth'
             });
-          } else {
-            console.log('🔝 PIN-TO-TOP: ERROR - Could not find user message element');
           }
         }
       }, 100);
