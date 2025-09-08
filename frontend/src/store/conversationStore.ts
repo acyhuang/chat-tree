@@ -22,6 +22,9 @@ import { logger } from '../utils/logger';
 interface ExchangeConversationState extends ConversationState {
   // Hover preview state
   previewExchange: ExchangeNode | null;
+  // Split loading states for better UI feedback
+  isCreatingConversation: boolean;
+  isSendingMessage: boolean;
   
   // Actions
   createConversation: (request: CreateConversationRequest) => Promise<void>;
@@ -42,6 +45,8 @@ const initialState = {
   isLoading: false,
   error: null,
   previewExchange: null,
+  isCreatingConversation: false,
+  isSendingMessage: false,
 };
 
 // Global abort controller for stream cancellation
@@ -55,19 +60,19 @@ export const useConversationStore = create<ExchangeConversationState>()(
       ...initialState,
 
       createConversation: async (request: CreateConversationRequest) => {
-        set({ isLoading: true, error: null });
+        set({ isCreatingConversation: true, error: null });
         
         try {
           const conversation = await apiClient.createConversation(request);
           set({ 
             currentExchangeTree: conversation,
-            isLoading: false 
+            isCreatingConversation: false 
           });
         } catch (error) {
           const apiError = error as ApiError;
           set({ 
             error: apiError.detail || apiError.message, 
-            isLoading: false 
+            isCreatingConversation: false 
           });
           throw error;
         }
@@ -121,7 +126,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
           throw new Error('No conversation loaded');
         }
 
-        set({ isLoading: true, error: null });
+        set({ isSendingMessage: true, error: null });
         
         try {
           const chatRequest: ChatRequest = {
@@ -144,7 +149,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
           const apiError = error as ApiError;
           set({ 
             error: apiError.detail || apiError.message, 
-            isLoading: false 
+            isSendingMessage: false 
           });
           throw error;
         }
@@ -282,7 +287,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
                         [realExchangeId]: updatedExchange
                       }
                     },
-                    isLoading: false 
+                    isSendingMessage: false 
                   });
 
                   // Save completed exchange to backend (fire-and-forget)
@@ -296,7 +301,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
             (error: string) => {
               set({ 
                 error: error,
-                isLoading: false 
+                isSendingMessage: false 
               });
               // Clear streaming exchange tracking on error
               currentStreamingExchangeId = null;
@@ -305,7 +310,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
         } catch (error) {
           // Check if this was an abort
           if (abortController.signal.aborted) {
-            set({ isLoading: false });
+            set({ isSendingMessage: false });
             // Clear streaming exchange tracking on abort
             currentStreamingExchangeId = null;
             return;
@@ -314,7 +319,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
           const apiError = error as ApiError;
           set({ 
             error: apiError.detail || apiError.message, 
-            isLoading: false 
+            isSendingMessage: false 
           });
           throw error;
         } finally {
@@ -355,7 +360,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
                       [currentStreamingExchangeId]: updatedExchange
                     }
                   },
-                  isLoading: false 
+                  isSendingMessage: false 
                 });
 
                 // Save interrupted exchange to backend (fire-and-forget)
@@ -365,7 +370,7 @@ export const useConversationStore = create<ExchangeConversationState>()(
             // Clear streaming exchange tracking
             currentStreamingExchangeId = null;
           } else {
-            set({ isLoading: false });
+            set({ isSendingMessage: false });
           }
         }
       },
@@ -507,9 +512,9 @@ export const useCurrentExchangeTree = () => {
   return useConversationStore(state => state.currentExchangeTree);
 };
 
-// Hook to check loading state
+// Hook to check loading state (backward compatibility - returns true if any operation is loading)
 export const useIsLoading = () => {
-  return useConversationStore(state => state.isLoading);
+  return useConversationStore(state => state.isCreatingConversation || state.isSendingMessage);
 };
 
 // Hook to get error state
@@ -520,4 +525,14 @@ export const useError = () => {
 // Hook to get preview exchange state
 export const usePreviewExchange = () => {
   return useConversationStore(state => state.previewExchange);
+};
+
+// Hook to check if creating conversation
+export const useIsCreatingConversation = () => {
+  return useConversationStore(state => state.isCreatingConversation);
+};
+
+// Hook to check if sending message
+export const useIsSendingMessage = () => {
+  return useConversationStore(state => state.isSendingMessage);
 };

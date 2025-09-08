@@ -156,7 +156,7 @@ const TreeVisualizationFlow: React.FC<TreeVisualizationProps> = ({ className = '
             includeHiddenNodes: false
           }}
           minZoom={0.3}
-          maxZoom={2}
+          maxZoom={1.2}
           selectNodesOnDrag={false}
           nodesDraggable={false}
           nodesConnectable={false}

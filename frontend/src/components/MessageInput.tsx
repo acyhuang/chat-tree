@@ -5,7 +5,7 @@
  * messages to the LLM. Handles loading states and keyboard shortcuts.
  */
 import React, { useState, KeyboardEvent } from 'react';
-import { useConversationStore } from '../store/conversationStore';
+import { useConversationStore, useIsSendingMessage } from '../store/conversationStore';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { ArrowUp, Square } from 'lucide-react';
@@ -23,7 +23,8 @@ const MessageInput: React.FC<MessageInputProps> = ({
   className = ''
 }) => {
   const [message, setMessage] = useState('');
-  const { sendMessage, isLoading, stopGeneration } = useConversationStore();
+  const { sendMessage, stopGeneration } = useConversationStore();
+  const isSendingMessage = useIsSendingMessage();
 
   const handleSendMessage = async () => {
     if (!message.trim() || disabled) {
@@ -44,7 +45,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const handleButtonClick = async () => {
-    if (isLoading) {
+    if (isSendingMessage) {
       // Stop the generation
       stopGeneration();
     } else {
@@ -69,18 +70,18 @@ const MessageInput: React.FC<MessageInputProps> = ({
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={disabled ? "Load a conversation to start chatting..." : placeholder}
-            disabled={disabled || isLoading}
+            disabled={disabled || isSendingMessage}
             className="flex-1 resize-none min-h-[24px] max-h-[120px]"
             rows={1}
           />
           <Button
             onClick={handleButtonClick}
-            disabled={disabled || (!message.trim() && !isLoading)}
+            disabled={disabled || (!message.trim() && !isSendingMessage)}
             variant="default"
             size="icon"
             className="self-end rounded-full size=sm flex items-center justify-center"
           >
-            {isLoading ? (
+            {isSendingMessage ? (
               <Square className="h-4 w-4"
               fill="currentColor"
               strokeWidth={0} />

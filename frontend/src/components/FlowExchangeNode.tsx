@@ -30,7 +30,7 @@ const FlowExchangeNode: React.FC<NodeProps> = ({
   } = data as unknown as FlowExchangeNodeData;
 
   // Determine opacity based on current path
-  const opacity = isInCurrentPath ? "opacity-100" : "opacity-50 hover:opacity-100";
+  const opacity = isInCurrentPath ? "opacity-100" : "opacity-70 hover:opacity-100";
   
   const getUserDisplayContent = () => {
     return exchange.user_summary || exchange.user_content;

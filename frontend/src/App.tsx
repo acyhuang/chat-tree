@@ -4,12 +4,11 @@
  * Phase 2: Chat interface implementation
  */
 import { useEffect, useState } from 'react';
-import { useConversationStore } from './store/conversationStore';
+import { useConversationStore, useIsCreatingConversation } from './store/conversationStore';
 import { apiClient } from './api/client';
 import { useTheme } from './hooks/useTheme';
 import { logger } from './utils/logger';
 import { Button } from './components/ui/button';
-import { Badge } from './components/ui/badge';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -22,18 +21,16 @@ import './App.css';
 
 function App() {
   const [apiStatus, setApiStatus] = useState<string>('Checking...');
-  const { currentExchangeTree, isLoading, error, createConversation, clearError } = useConversationStore();
+  const { currentExchangeTree, error, createConversation, clearError } = useConversationStore();
+  const isCreatingConversation = useIsCreatingConversation();
   const { toggleTheme, isDark } = useTheme();
 
   // Check API health on mount
   useEffect(() => {
     const checkApi = async () => {
       try {
-        const health = await apiClient.healthCheck();
-        const count = health.storage_stats.total_conversations;
-        const conversationLabel = count === 1 ? 'conversation' : 'conversations';
-        setApiStatus(`Connected`);
-        // setApiStatus(`Connected - ${count} ${conversationLabel}`);
+        await apiClient.healthCheck();
+        setApiStatus('Connected');
       } catch (error) {
         logger.error('API health check failed:', error);
         setApiStatus('Backend not available');
@@ -46,7 +43,7 @@ function App() {
   // Auto-create conversation if none exists
   useEffect(() => {
     const autoCreateConversation = async () => {
-      if (!currentExchangeTree && !isLoading && apiStatus.includes('Connected')) {
+      if (!currentExchangeTree && !isCreatingConversation && apiStatus.includes('Connected')) {
         try {
           await createConversation({ initial_message: null });
         } catch (error) {
@@ -56,7 +53,7 @@ function App() {
     };
 
     autoCreateConversation();
-  }, [currentExchangeTree, isLoading, apiStatus, createConversation]);
+  }, [currentExchangeTree, isCreatingConversation, apiStatus, createConversation]);
 
   const handleCreateNewConversation = async () => {
     try {
@@ -97,11 +94,11 @@ function App() {
               </Button>
               <Button
                 onClick={handleCreateNewConversation}
-                disabled={isLoading}
+                disabled={isCreatingConversation}
                 variant="outline"
                 size="sm"
               >
-                {isLoading ? 'Creating...' : 'New Conversation'}
+                {isCreatingConversation ? 'Creating...' : 'New Conversation'}
               </Button>
             </div>
           </div>
